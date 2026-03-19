@@ -28,7 +28,7 @@ public class TokenService : ITokenService
 
     public string GenerateAccessToken(User user, IEnumerable<string> roles)
     {
-        var key   = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_cfg["Jwt:Key"]!));
+        var key   = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_cfg["JwtSettings:Secret"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var claims = new List<Claim>
         {
@@ -40,9 +40,9 @@ public class TokenService : ITokenService
         };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
         var token = new JwtSecurityToken(
-            issuer: _cfg["Jwt:Issuer"], audience: _cfg["Jwt:Audience"],
+            issuer: _cfg["JwtSettings:Issuer"], audience: _cfg["JwtSettings:Audience"],
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(int.Parse(_cfg["Jwt:ExpiryMinutes"] ?? "60")),
+            expires: DateTime.UtcNow.AddMinutes(int.Parse(_cfg["JwtSettings:ExpiryMinutes"] ?? "60")),
             signingCredentials: creds);
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
@@ -56,14 +56,14 @@ public class TokenService : ITokenService
 
     public ClaimsPrincipal? ValidateExpiredToken(string token)
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_cfg["Jwt:Key"]!));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_cfg["JwtSettings:Secret"]!));
         try
         {
             return new JwtSecurityTokenHandler().ValidateToken(token, new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true, IssuerSigningKey = key,
-                ValidateIssuer = true, ValidIssuer = _cfg["Jwt:Issuer"],
-                ValidateAudience = true, ValidAudience = _cfg["Jwt:Audience"],
+                ValidateIssuer = true, ValidIssuer = _cfg["JwtSettings:Issuer"],
+                ValidateAudience = true, ValidAudience = _cfg["JwtSettings:Audience"],
                 ValidateLifetime = false,
             }, out _);
         }
