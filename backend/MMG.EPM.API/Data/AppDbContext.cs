@@ -177,8 +177,6 @@ public class AppDbContext : DbContext
             .WithMany(f => f.Children)
             .HasForeignKey(f => f.ParentId)
             .OnDelete(DeleteBehavior.Restrict);
-        mb.Entity<Expenditure>().Property(e => e.PaymentAmount).HasPrecision(18, 2);
         mb.Entity<StockLedgerEntry>().Property(s => s.Quantity).HasPrecision(14, 3);
-        mb.Entity<Material>().Property(m => m.UnitCost).HasPrecision(18, 4);
     }
 }

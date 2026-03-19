@@ -166,7 +166,7 @@ public class PurchaseOrder : BaseEntity
     // Draft | Sent | Acknowledged | PartialDelivery | FullDelivery | Closed
     [MaxLength(50)] public string? PaymentTerms { get; set; }
     [MaxLength(2000)] public string? SpecialInstructions { get; set; }
-    public Guid CreatedById { get; set; }
+    public new Guid CreatedById { get; set; }
 
     public Vendor           Vendor          { get; set; } = null!;
     public Project          Project         { get; set; } = null!;
@@ -499,7 +499,7 @@ public class RiskUpdate : BaseEntity
     [MaxLength(50)] public string? NewImpact { get; set; }
     public int? NewRiskScore { get; set; }
     [MaxLength(2000)] public string? MitigationUpdate { get; set; }
-    public Guid UpdatedById { get; set; }
+    public new Guid UpdatedById { get; set; }
 
     public Risk Risk { get; set; } = null!;
     [ForeignKey(nameof(UpdatedById))] public User UpdatedBy { get; set; } = null!;

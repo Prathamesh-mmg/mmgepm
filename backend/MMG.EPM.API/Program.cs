@@ -222,15 +222,8 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 });
 
 // Register recurring jobs
-RecurringJob.AddOrUpdate<INotificationService>(
-    "send-delayed-task-alerts",
-    svc => svc.SendDelayedTaskAlertsAsync(),
-    Cron.Daily(6));
-
-RecurringJob.AddOrUpdate<INotificationService>(
-    "send-budget-overrun-alerts",
-    svc => svc.SendBudgetAlertAsync(),
-    Cron.Daily(7));
+// (Add custom Hangfire jobs here when needed)
+// RecurringJob.AddOrUpdate<INotificationService>("job-id", svc => svc.YourMethodAsync(), Cron.Daily(6));
 
 // Apply pending EF migrations on startup (optional for dev)
 if (app.Environment.IsDevelopment())

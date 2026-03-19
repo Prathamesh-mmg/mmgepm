@@ -143,7 +143,7 @@ public class TaskAssignee
 public class WorkProgress : BaseEntity
 {
     public Guid TaskId { get; set; }
-    public Guid UpdatedById { get; set; }
+    public new Guid UpdatedById { get; set; }
     [MaxLength(2000)] public string? Notes { get; set; }
     [Column(TypeName = "decimal(5,2)")] public decimal ProgressPercentage { get; set; }
     [Column(TypeName = "decimal(10,2)")] public decimal? HoursLogged { get; set; }
