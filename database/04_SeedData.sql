@@ -1,300 +1,121 @@
 -- ============================================================
--- MMG EPM - Seed Data: Roles, Permissions, Lookups
+-- MMG EPM - Seed Data
+-- Run AFTER 01, 02, 03 scripts
+-- Creates admin user, roles, permissions
+-- Admin login: admin@mmgepm.com / Admin@123
 -- ============================================================
 
-USE MMGEPM;
+USE MMG_EPM;
 GO
 
--- ============================================================
--- ROLES (from Role Matrix document)
--- ============================================================
-INSERT INTO Auth.Roles (RoleName, RoleCode, Description) VALUES
-('System Administrator',    'ADMIN',        'Full system access'),
-('Planning Engineer',       'PLAN_ENG',     'Full edit on all project modules'),
-('Project Manager',         'PROJ_MGR',     'Manages project execution, approvals'),
-('SME Civil',               'SME_CIVIL',    'Civil Subject Matter Expert'),
-('SME Electrical',          'SME_ELEC',     'Electrical Subject Matter Expert'),
-('SME Mechanical',          'SME_MECH',     'Mechanical Subject Matter Expert'),
-('SME',                     'SME',          'General SME with document access'),
-('Site Engineer',           'SITE_ENG',     'Site-level operations and reporting'),
-('Procurement Head',        'PROC_HEAD',    'Heads procurement department'),
-('Purchase Manager',        'PURCH_MGR',    'Manages purchase orders and payments'),
-('Business Development',    'BD_TEAM',      'View-only access for BD purposes'),
-('Management',              'MGMT',         'Senior management with view access'),
-('Project Head',            'PROJ_HEAD',    'Oversees projects with selective edit'),
-('Labour Manager',          'LAB_MGR',      'Manages labour and attendance');
+-- ─── Roles ───────────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM [Auth].[Roles] WHERE [Name] = 'Admin')
+BEGIN
+    INSERT INTO [Auth].[Roles] ([Id],[Name],[Description],[IsSystem],[CreatedAt],[UpdatedAt],[IsDeleted]) VALUES
+    (NEWID(),'Admin',               'Full system access',                    1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Planning Engineer',   'Project planning and scheduling',       1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Project Manager',     'Manage assigned projects',              1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Project Head',        'Head of projects division',             1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Site Engineer',       'On-site engineering work',              1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'SME Civil',           'Subject Matter Expert - Civil',         1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'SME Electrical',      'Subject Matter Expert - Electrical',    1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'SME Mechanical',      'Subject Matter Expert - Mechanical',    1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Labour Manager',      'Manage labour and attendance',          1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Procurement Head',    'Head of procurement',                   1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Purchase Manager',    'Manage purchase orders',                1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Business Development','Business development activities',       1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Management',          'Senior management access',              1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Viewer',              'Read-only access',                      1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0);
+    PRINT 'Roles created';
+END
 GO
 
--- ============================================================
--- PERMISSIONS
--- ============================================================
-INSERT INTO Auth.Permissions (Module, SubModule, Action) VALUES
--- Project Management
-('Project', 'Project',         'View'),
-('Project', 'Project',         'Create'),
-('Project', 'Project',         'Edit'),
-('Project', 'Project',         'Delete'),
-('Project', 'SubProject',      'View'),
-('Project', 'SubProject',      'Create'),
-('Project', 'SubProject',      'Edit'),
-('Project', 'Task',            'View'),
-('Project', 'Task',            'Create'),
-('Project', 'Task',            'Edit'),
-('Project', 'WorkProgress',    'View'),
-('Project', 'WorkProgress',    'Create'),
-('Project', 'WorkProgress',    'Edit'),
-('Project', 'CrewAttendance',  'View'),
-('Project', 'CrewAttendance',  'Create'),
-('Project', 'CrewAttendance',  'Edit'),
-('Project', 'DPR',             'View'),
-('Project', 'DPR',             'Create'),
-('Project', 'DPR',             'Approve'),
-('Project', 'Contractor',      'View'),
-('Project', 'Contractor',      'Create'),
-('Project', 'Contractor',      'Edit'),
--- Document Management
-('Document', 'DocumentCenter', 'View'),
-('Document', 'DocumentCenter', 'Create'),
-('Document', 'DocumentCenter', 'Edit'),
-('Document', 'Drawings',       'View'),
-('Document', 'Drawings',       'Create'),
-('Document', 'Drawings',       'Edit'),
-('Document', 'ChangeRequest',  'View'),
-('Document', 'ChangeRequest',  'Create'),
-('Document', 'ChangeRequest',  'Edit'),
-('Document', 'ChangeRequest',  'Approve'),
--- Procurement
-('Procurement', 'MaterialRequest', 'View'),
-('Procurement', 'MaterialRequest', 'Create'),
-('Procurement', 'MaterialRequest', 'Edit'),
-('Procurement', 'MaterialRequest', 'Approve'),
-('Procurement', 'PurchaseOrder',   'View'),
-('Procurement', 'PurchaseOrder',   'Create'),
-('Procurement', 'PurchaseOrder',   'Edit'),
-('Procurement', 'Payment',         'View'),
-('Procurement', 'Payment',         'Create'),
--- Inventory
-('Inventory', 'Material',    'View'),
-('Inventory', 'Material',    'Create'),
-('Inventory', 'Material',    'Edit'),
-('Inventory', 'StockLedger', 'View'),
-('Inventory', 'StockLedger', 'Create'),
-('Inventory', 'Transfer',    'View'),
-('Inventory', 'Transfer',    'Create'),
-('Inventory', 'Transfer',    'Approve'),
--- Resource
-('Resource', 'Resource',    'View'),
-('Resource', 'Resource',    'Create'),
-('Resource', 'Resource',    'Edit'),
-('Resource', 'Calendar',    'View'),
-('Resource', 'Calendar',    'Edit'),
-('Resource', 'Allocation',  'View'),
-('Resource', 'Allocation',  'Edit'),
--- Budget
-('Budget', 'Budget',      'View'),
-('Budget', 'Budget',      'Create'),
-('Budget', 'Budget',      'Edit'),
-('Budget', 'Budget',      'Approve'),
-('Budget', 'Commitment',  'View'),
-('Budget', 'Commitment',  'Create'),
-('Budget', 'Expenditure', 'View'),
-('Budget', 'Expenditure', 'Create'),
--- Risk
-('Risk', 'Risk', 'View'),
-('Risk', 'Risk', 'Create'),
-('Risk', 'Risk', 'Edit'),
-('Risk', 'Risk', 'Approve'),
--- Admin
-('Admin', 'Users',       'View'),
-('Admin', 'Users',       'Create'),
-('Admin', 'Users',       'Edit'),
-('Admin', 'Users',       'Delete'),
-('Admin', 'Roles',       'Manage'),
-('Admin', 'Settings',    'Manage');
+-- ─── Admin User ───────────────────────────────────────────────
+-- Password: Admin@123 (BCrypt hash)
+DECLARE @AdminId UNIQUEIDENTIFIER = NEWID();
+DECLARE @AdminRoleId UNIQUEIDENTIFIER;
+
+SELECT @AdminRoleId = [Id] FROM [Auth].[Roles] WHERE [Name] = 'Admin';
+
+IF NOT EXISTS (SELECT 1 FROM [Auth].[Users] WHERE [Email] = 'admin@mmgepm.com')
+BEGIN
+    INSERT INTO [Auth].[Users] (
+        [Id],[FirstName],[LastName],[Email],[PasswordHash],
+        [IsActive],[MustChangePassword],[FailedLoginAttempts],
+        [Department],[JobTitle],
+        [CreatedAt],[UpdatedAt],[IsDeleted]
+    ) VALUES (
+        @AdminId,
+        'System','Administrator','admin@mmgepm.com',
+        '$2b$11$2WAL7cgMHWjqVh4fh4CE5eSiISVeSFnGfpD1bEVk255Ak2GdcNeUu',
+        1, 0, 0,
+        'IT','System Administrator',
+        SYSUTCDATETIME(), SYSUTCDATETIME(), 0
+    );
+
+    INSERT INTO [Auth].[UserRoles] ([UserId],[RoleId],[AssignedAt])
+    VALUES (@AdminId, @AdminRoleId, SYSUTCDATETIME());
+
+    PRINT 'Admin user created: admin@mmgepm.com / Admin@123';
+END
+ELSE
+BEGIN
+    -- Update hash if user exists but has placeholder hash
+    UPDATE [Auth].[Users]
+    SET [PasswordHash] = '$2b$11$2WAL7cgMHWjqVh4fh4CE5eSiISVeSFnGfpD1bEVk255Ak2GdcNeUu',
+        [UpdatedAt] = SYSUTCDATETIME()
+    WHERE [Email] = 'admin@mmgepm.com'
+      AND [PasswordHash] LIKE '%placeholder%';
+    PRINT 'Admin password hash updated';
+END
 GO
 
--- ============================================================
--- ROLE-PERMISSION MAPPING (from Role Matrix)
--- ============================================================
--- Planning Engineer - full edit everything
-INSERT INTO Auth.RolePermissions (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId
-FROM Auth.Roles r
-CROSS JOIN Auth.Permissions p
-WHERE r.RoleCode = 'PLAN_ENG'
-  AND p.Module NOT IN ('Admin');
+-- ─── Sample Countries ─────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM [Auth].[Countries] WHERE [Code] = 'TZA')
+BEGIN
+    INSERT INTO [Auth].[Countries] ([Id],[Name],[Code],[CurrencyCode],[CreatedAt],[UpdatedAt],[IsDeleted]) VALUES
+    (NEWID(),'Tanzania',       'TZA','TZS', SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Kenya',          'KEN','KES', SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Uganda',         'UGA','UGX', SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Rwanda',         'RWA','RWF', SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Ethiopia',       'ETH','ETB', SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'Ghana',          'GHA','GHS', SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'South Africa',   'ZAF','ZAR', SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'United Arab Emirates','UAE','AED', SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'India',          'IND','INR', SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'United States',  'USA','USD', SYSUTCDATETIME(), SYSUTCDATETIME(), 0);
+    PRINT 'Countries seeded';
+END
 GO
 
--- Admin - everything
-INSERT INTO Auth.RolePermissions (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId
-FROM Auth.Roles r
-CROSS JOIN Auth.Permissions p
-WHERE r.RoleCode = 'ADMIN';
+-- ─── Sample SBU Codes ─────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM [Auth].[SBUCodes] WHERE [Code] = 'MMG-TZ')
+BEGIN
+    INSERT INTO [Auth].[SBUCodes] ([Id],[Code],[Name],[Country],[IsActive],[CreatedAt],[UpdatedAt],[IsDeleted]) VALUES
+    (NEWID(),'MMG-TZ',  'MMG Tanzania',        'Tanzania',     1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'MMG-KE',  'MMG Kenya',           'Kenya',        1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'MMG-UG',  'MMG Uganda',          'Uganda',       1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'MMG-ETH', 'MMG Ethiopia',        'Ethiopia',     1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'MMG-GH',  'MMG Ghana',           'Ghana',        1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'MMG-UAE', 'MMG Middle East',     'UAE',          1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0);
+    PRINT 'SBU Codes seeded';
+END
 GO
 
--- Project Manager - view project/task, edit work progress/DPR/contractor/procurement
-INSERT INTO Auth.RolePermissions (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId
-FROM Auth.Roles r, Auth.Permissions p
-WHERE r.RoleCode = 'PROJ_MGR'
-AND (
-    (p.Module = 'Project' AND p.Action = 'View')
-    OR (p.Module = 'Project' AND p.SubModule IN ('WorkProgress','CrewAttendance','DPR','Contractor') AND p.Action IN ('Create','Edit','Approve'))
-    OR (p.Module = 'Document' AND p.Action IN ('View','Create','Edit','Approve'))
-    OR (p.Module = 'Procurement' AND p.Action IN ('View','Create','Edit','Approve'))
-    OR (p.Module = 'Budget' AND p.Action IN ('View','Create','Edit'))
-    OR (p.Module = 'Risk' AND p.Action IN ('View','Create','Edit','Approve'))
-    OR (p.Module = 'Inventory' AND p.Action = 'View')
-    OR (p.Module = 'Resource' AND p.Action IN ('View','Edit'))
-);
+-- ─── Notification Templates ───────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM [Notify].[NotificationTemplates] WHERE [Code] = 'TASK_ASSIGNED')
+BEGIN
+    INSERT INTO [Notify].[NotificationTemplates] ([Id],[Code],[Subject],[Body],[Channel],[IsActive],[CreatedAt],[UpdatedAt],[IsDeleted]) VALUES
+    (NEWID(),'TASK_ASSIGNED',   'Task Assigned to You',      'A task has been assigned to you: {{TaskName}}',        'Both',  1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'TASK_DUE',        'Task Due Reminder',         'Task {{TaskName}} is due on {{DueDate}}',              'Both',  1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'RISK_RAISED',     'New Risk Registered',       'A new risk has been raised: {{RiskTitle}}',            'Both',  1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'MR_APPROVAL',     'Material Request Approval', 'MR {{MRNumber}} requires your approval',              'Both',  1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'DPR_SUBMITTED',   'DPR Submitted',             'Daily Progress Report submitted for {{ProjectName}}', 'InApp', 1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0),
+    (NEWID(),'BUDGET_ALERT',    'Budget Alert',              'Budget utilization for {{ProjectName}} exceeded 80%', 'Both',  1, SYSUTCDATETIME(), SYSUTCDATETIME(), 0);
+    PRINT 'Notification templates seeded';
+END
 GO
 
--- SME Civil/Elec/Mech - view project, edit drawings/change requests/document center
-INSERT INTO Auth.RolePermissions (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId
-FROM Auth.Roles r, Auth.Permissions p
-WHERE r.RoleCode IN ('SME_CIVIL', 'SME_ELEC', 'SME_MECH')
-AND (
-    (p.Module = 'Project' AND p.Action = 'View')
-    OR (p.Module = 'Document' AND p.Action IN ('View','Create','Edit','Approve'))
-    OR (p.Module = 'Procurement' AND p.Action = 'View')
-    OR (p.Module = 'Budget' AND p.Action IN ('View','Create'))
-    OR (p.Module = 'Risk' AND p.Action IN ('View','Create','Edit'))
-);
-GO
-
--- Site Engineer - view projects, edit work progress, crew attendance, procurement view+create
-INSERT INTO Auth.RolePermissions (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId
-FROM Auth.Roles r, Auth.Permissions p
-WHERE r.RoleCode = 'SITE_ENG'
-AND (
-    (p.Module = 'Project' AND p.Action = 'View')
-    OR (p.Module = 'Project' AND p.SubModule IN ('WorkProgress','CrewAttendance') AND p.Action IN ('Create','Edit'))
-    OR (p.Module = 'Procurement' AND p.Action IN ('View','Create'))
-    OR (p.Module = 'Inventory' AND p.Action IN ('View','Create'))
-);
-GO
-
--- Purchase Manager - view projects, full procurement
-INSERT INTO Auth.RolePermissions (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId
-FROM Auth.Roles r, Auth.Permissions p
-WHERE r.RoleCode = 'PURCH_MGR'
-AND (
-    (p.Module = 'Project' AND p.Action = 'View')
-    OR (p.Module = 'Procurement')
-    OR (p.Module = 'Document' AND p.SubModule = 'DocumentCenter' AND p.Action IN ('View','Create','Edit'))
-);
-GO
-
--- Management - view only (selective)
-INSERT INTO Auth.RolePermissions (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId
-FROM Auth.Roles r, Auth.Permissions p
-WHERE r.RoleCode = 'MGMT'
-AND p.Action = 'View';
-GO
-
--- ============================================================
--- LOOKUP DATA
--- ============================================================
-INSERT INTO Auth.Countries (CountryName, CountryCode) VALUES
-('Zambia',      'ZAM'),
-('Kenya',       'KEN'),
-('Tanzania',    'TZA'),
-('Uganda',      'UGA'),
-('Ethiopia',    'ETH'),
-('Rwanda',      'RWA'),
-('South Africa','ZAF'),
-('Nigeria',     'NGA'),
-('Ghana',       'GHA'),
-('Egypt',       'EGY');
-GO
-
-INSERT INTO Project.LabourCategories (CategoryName, TradeType) VALUES
-('Mason',           'Civil'),
-('Carpenter',       'Civil'),
-('Steel Fixer',     'Civil'),
-('Welder',          'Mechanical'),
-('Pipefitter',      'Mechanical'),
-('Electrician',     'Electrical'),
-('Plumber',         'MEP'),
-('Helper (Skilled)','General'),
-('Helper (Unskilled)','General'),
-('Supervisor',      'Management'),
-('Safety Officer',  'HSE'),
-('Surveyor',        'Civil');
-GO
-
-INSERT INTO Inventory.MaterialCategories (CategoryName, CategoryType) VALUES
-('Cement & Concrete',   'Civil'),
-('Steel & Rebar',       'Civil'),
-('Bricks & Blocks',     'Civil'),
-('Pipes & Fittings',    'Mechanical'),
-('Structural Steel',    'Mechanical'),
-('Pumps & Valves',      'Mechanical'),
-('Cables & Wires',      'Electrical'),
-('Switchgear',          'Electrical'),
-('Lighting',            'Electrical'),
-('Consumables',         'General'),
-('Tools & Tackles',     'General'),
-('Safety Equipment',    'HSE');
-GO
-
-INSERT INTO Budget.BudgetWBS (WBSCode, WBSName, WBSLevel) VALUES
-('01', 'Approvals',                 1),
-('02', 'Engineering & Design Cost', 1),
-('03', 'Material Budget',           1),
-('04', 'Labour Budget',             1),
-('05', 'Equipment Hire',            1),
-('06', 'Equipment Purchase',        1),
-('07', 'On Site Expenses',          1);
-GO
-
-INSERT INTO Resource.ResourceTypes (TypeName) VALUES
-('Work'), ('Material'), ('Cost'), ('Equipment');
-GO
-
-INSERT INTO Resource.Calendars (CalendarName, CalendarType, WorkingDays, WorkStartTime, WorkEndTime, IsDefault, CreatedBy) VALUES
-('Standard 5-day', 'Organization', '1111100', '08:00', '17:00', 1, 1),
-('Standard 6-day', 'Organization', '1111110', '08:00', '17:00', 0, 1),
-('24-Hour Shift',  'Organization', '1111111', '00:00', '23:59', 0, 1),
-('Night Shift',    'Organization', '1111110', '20:00', '06:00', 0, 1);
-GO
-
--- Notification templates
-INSERT INTO Notify.NotificationTemplates (TemplateCode, Subject, BodyHtml) VALUES
-('TASK_ASSIGNED',       'Task Assigned: {{TaskName}}',
- '<p>Dear {{UserName}},</p><p>A task <strong>{{TaskName}}</strong> in project <strong>{{ProjectName}}</strong> has been assigned to you.</p><p>Due Date: {{DueDate}}</p>'),
-('MR_PM_REVIEW',        'Material Request Awaiting Your Approval: {{MRCode}}',
- '<p>Dear {{UserName}},</p><p>Material Request <strong>{{MRCode}}</strong> for project <strong>{{ProjectName}}</strong> requires your approval.</p>'),
-('RISK_REGISTERED',     'New Risk Registered: {{RiskTitle}}',
- '<p>A new risk <strong>{{RiskTitle}}</strong> (Severity: {{Severity}}) has been registered for project <strong>{{ProjectName}}</strong>.</p>'),
-('DPR_SUBMITTED',       'DPR Submitted for {{Date}} - {{ProjectName}}',
- '<p>Daily Progress Report for <strong>{{ProjectName}}</strong> on <strong>{{Date}}</strong> has been submitted and awaits your approval.</p>'),
-('TASK_DELAYED',        'Delayed Task Alert: {{TaskName}}',
- '<p>Task <strong>{{TaskName}}</strong> in project <strong>{{ProjectName}}</strong> is past its due date.</p>'),
-('BUDGET_OVERRUN',      'Budget Alert: {{BudgetCategory}} - {{ProjectName}}',
- '<p>The budget for <strong>{{BudgetCategory}}</strong> in project <strong>{{ProjectName}}</strong> has exceeded 90% utilization.</p>'),
-('CR_APPROVED',         'Change Request Approved: {{CRNumber}}',
- '<p>Change Request <strong>{{CRNumber}}</strong> for project <strong>{{ProjectName}}</strong> has been approved.</p>'),
-('STOCK_REORDER',       'Low Stock Alert: {{MaterialName}} - {{ProjectName}}',
- '<p>Material <strong>{{MaterialName}}</strong> in project <strong>{{ProjectName}}</strong> has fallen below reorder level.</p>');
-GO
-
--- Default admin user (password: Admin@123 - bcrypt hash placeholder)
-INSERT INTO Auth.Users (FirstName, LastName, Email, PasswordHash, IsActive, IsEmailVerified, CreatedBy) VALUES
-('System', 'Administrator', 'admin@mmgepm.com',
- '$2a$11$placeholder_bcrypt_hash_change_before_production',
- 1, 1, 1);
-GO
-
-DECLARE @AdminUserId INT = SCOPE_IDENTITY();
-DECLARE @AdminRoleId INT = (SELECT RoleId FROM Auth.Roles WHERE RoleCode = 'ADMIN');
-INSERT INTO Auth.UserRoles (UserId, RoleId, AssignedBy) VALUES (@AdminUserId, @AdminRoleId, @AdminUserId);
-GO
-
-PRINT 'Seed data inserted successfully.';
+PRINT '=== MMG EPM Seed Data Complete ===';
+PRINT 'Login: admin@mmgepm.com / Admin@123';
 GO
