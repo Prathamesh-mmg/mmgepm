@@ -1450,7 +1450,7 @@ public class ReconciliationController : ControllerBase
             .Include(s => s.Material)
             .Where(s => s.ProjectId == req.ProjectId && !s.IsDeleted)
             .GroupBy(s => new { s.MaterialId, s.Material.Name })
-            .Select(g => new { g.Key.MaterialId, g.Key.Name, Balance: g.Max(s => s.BalanceAfter ?? 0) })
+            .Select(g => new { g.Key.MaterialId, g.Key.Name, Balance = g.Max(s => s.BalanceAfter ?? 0) })
             .ToListAsync();
 
         var rec = new InventoryReconciliation
