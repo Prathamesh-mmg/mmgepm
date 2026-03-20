@@ -1,351 +1,299 @@
-import React, { useState } from 'react';
-// src/components/layout/MainLayout.tsx
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import * as signalR from '@microsoft/signalr';
 import {
   LayoutDashboard, FolderKanban, CheckSquare, FileText,
-  ShoppingCart, Package, Users, DollarSign, AlertTriangle,
+  ShoppingCart, Package, DollarSign, AlertTriangle,
   Bell, Settings, ChevronLeft, ChevronRight, LogOut,
-  User, Menu, X, ChevronDown, Search, Wrench
+  User, Menu, X, ChevronDown, Wrench, Users, CheckCheck
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/api';
-import { Bell, X, CheckCheck } from 'lucide-react';
-import { authApi, notificationsApi } from '../../lib/api';
+import { api, authApi, notificationsApi } from '../../lib/api';
 import clsx from 'clsx';
 
 interface NavItem {
-  label:   string;
-  to:      string;
-  icon:    React.ElementType;
-  badge?:  number;
+  label: string;
+  to: string;
+  icon: React.ElementType;
+  badge?: number;
   children?: { label: string; to: string }[];
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard',    to: '/dashboard',    icon: LayoutDashboard },
-  { label: 'Projects',     to: '/projects',     icon: FolderKanban    },
-  { label: 'My Tasks',     to: '/tasks',        icon: CheckSquare     },
+  { label: 'Dashboard',   to: '/dashboard',   icon: LayoutDashboard },
+  { label: 'Projects',    to: '/projects',    icon: FolderKanban    },
+  { label: 'My Tasks',    to: '/tasks',       icon: CheckSquare     },
   {
-    label: 'Documents',
-    to:    '/documents',
-    icon:  FileText,
+    label: 'Documents', to: '/documents', icon: FileText,
     children: [
-      { label: 'Document Center', to: '/documents/center'   },
-      { label: 'Drawings',        to: '/documents/drawings' },
-      { label: 'Change Requests', to: '/documents/cr'       },
+      { label: 'Document Center', to: '/documents' },
+      { label: 'Drawings',        to: '/documents?tab=drawings' },
+      { label: 'Change Requests', to: '/documents?tab=changes'  },
     ]
   },
-  { label: 'Procurement',  to: '/procurement',  icon: ShoppingCart    },
-  { label: 'Inventory',    to: '/inventory',    icon: Package         },
-  { label: 'Resources',    to: '/resources',    icon: Wrench          },
-  { label: 'Budget',       to: '/budget',       icon: DollarSign      },
-  { label: 'Risks',        to: '/risks',        icon: AlertTriangle   },
+  { label: 'Procurement', to: '/procurement', icon: ShoppingCart    },
+  { label: 'Inventory',   to: '/inventory',   icon: Package         },
+  { label: 'Resources',   to: '/resources',   icon: Wrench          },
+  { label: 'Budget',      to: '/budget',      icon: DollarSign      },
+  { label: 'Risks',       to: '/risks',       icon: AlertTriangle   },
 ];
 
 const adminNavItems: NavItem[] = [
-  { label: 'Users',        to: '/admin/users',    icon: Users     },
-  { label: 'Settings',     to: '/admin/settings', icon: Settings  },
+  { label: 'Users',    to: '/admin/users',    icon: Users    },
+  { label: 'Settings', to: '/admin/settings', icon: Settings },
 ];
 
 export default function MainLayout() {
-  const navigate     = useNavigate();
+  const navigate = useNavigate();
   const { user, clearAuth, isAdmin } = useAuthStore(s => ({
-    user:     s.user,
-    clearAuth: s.clearAuth,
-    isAdmin:  s.isAdmin,
+    user: s.user, clearAuth: s.clearAuth, isAdmin: s.isAdmin,
   }));
 
-  const [collapsed,      setCollapsed]      = useState(false);
-  const [mobileOpen,     setMobileOpen]     = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
-  const [notifOpen,      setNotifOpen]      = useState(false);
-  const [userOpen,       setUserOpen]       = useState(false);
+  const [collapsed,    setCollapsed]    = useState(false);
+  const [mobileOpen,   setMobileOpen]   = useState(false);
+  const [expandedNav,  setExpandedNav]  = useState<string | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [notifOpen,    setNotifOpen]    = useState(false);
 
-  // Fetch unread notifications count
-  const { data: unreadNotifs, refetch: refetchNotifs } = useQuery({
-    queryKey: ['notifications-unread'],
-    queryFn:  () => notificationsApi.getUnread().then(r => r.data),
-    refetchInterval: 60_000,
+  // Unread notification count
+  const { data: unreadData, refetch: refetchCount } = useQuery({
+    queryKey: ['notif-unread-count'],
+    queryFn: () => api.get('/notifications/unread-count').then(r => r.data),
+    refetchInterval: 30000,
+  });
+  const unreadCount = unreadData?.count ?? 0;
+
+  // Notification list (lazy)
+  const { data: notifList = [], refetch: refetchList } = useQuery({
+    queryKey: ['notif-list'],
+    queryFn: () => api.get('/notifications', { params: { take: 15 } }).then(r => r.data),
+    enabled: notifOpen,
   });
 
-  // SignalR for real-time notifications
+  const markAllMutation = useMutation({
+    mutationFn: () => api.post('/notifications/read-all'),
+    onSuccess: () => { refetchCount(); refetchList(); },
+  });
+
+  // SignalR real-time notifications
   useEffect(() => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
-
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl(`${import.meta.env.VITE_WS_URL ?? 'http://localhost:5000'}/hubs/notifications`, {
+      .withUrl('http://localhost:5000/hubs/notifications', {
         accessTokenFactory: () => token,
       })
       .withAutomaticReconnect()
       .build();
 
-    connection.on('ReceiveNotification', (notif) => {
-      toast.custom((t) => (
-        <div className={clsx('card p-3 max-w-sm shadow-lg border-l-4 border-brand-400', t.visible ? 'animate-slide-in' : '')}>
-          <p className="font-medium text-sm">{notif.title}</p>
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5">{notif.message}</p>
-        </div>
-      ), { duration: 5000 });
-      refetchNotifs();
-    });
-
-    connection.start().catch(console.error);
+    connection.on('notification', () => { refetchCount(); });
+    connection.start().catch(() => {/* silent fail in dev */});
     return () => { connection.stop(); };
   }, []);
 
   const handleLogout = async () => {
-    await authApi.logout().catch(() => {});
+    try { await authApi.logout(); } catch { /* ignore */ }
     clearAuth();
     navigate('/login');
+    toast.success('Signed out');
   };
 
-  const toggleGroup = (label: string) =>
-    setExpandedGroups(p => ({ ...p, [label]: !p[label] }));
+  const isAdminUser = isAdmin();
 
-  const SidebarItem = ({ item }: { item: NavItem }) => {
-    const hasChildren = !!item.children?.length;
-    const isExpanded  = expandedGroups[item.label];
-    const Icon        = item.icon;
+  return (
+    <div className="flex h-screen bg-[var(--bg-secondary)] overflow-hidden">
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setMobileOpen(false)} />
+      )}
 
-    if (hasChildren) {
-      return (
-        <div>
-          <button
-            className="sidebar-item w-full"
-            onClick={() => toggleGroup(item.label)}
-          >
-            <Icon className="icon" />
-            {!collapsed && (
-              <>
-                <span className="flex-1 text-left">{item.label}</span>
-                <ChevronDown className={clsx('w-4 h-4 transition-transform', isExpanded && 'rotate-180')} />
-              </>
-            )}
-          </button>
-          {isExpanded && !collapsed && (
-            <div className="ml-7 mt-1 space-y-0.5 border-l border-dark-600 pl-3">
-              {item.children?.map(child => (
-                <NavLink
-                  key={child.to}
-                  to={child.to}
-                  className={({ isActive }) =>
-                    clsx('block py-1.5 px-2 text-sm rounded transition-colors',
-                      isActive ? 'text-brand-400 font-medium' : 'text-gray-500 hover:text-gray-300')}
-                >
-                  {child.label}
-                </NavLink>
-              ))}
+      {/* ── Sidebar ── */}
+      <aside className={clsx(
+        'fixed lg:relative z-30 h-full flex flex-col bg-dark-800 transition-all duration-300 ease-in-out',
+        collapsed ? 'w-16' : 'w-64',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      )}>
+        {/* Logo */}
+        <div className={clsx('flex items-center gap-3 px-4 py-5 border-b border-dark-700', collapsed && 'justify-center px-2')}>
+          <div className="w-8 h-8 rounded-lg bg-brand-400 flex items-center justify-center flex-shrink-0">
+            <span className="text-sm font-bold text-dark-900">M</span>
+          </div>
+          {!collapsed && (
+            <div>
+              <p className="text-white font-bold text-sm leading-tight">MMG EPM</p>
+              <p className="text-gray-500 text-[10px]">Enterprise PM</p>
             </div>
           )}
         </div>
-      );
-    }
 
-    return (
-      <NavLink
-        to={item.to}
-        className={({ isActive }) => clsx('sidebar-item', isActive && 'active')}
-        title={collapsed ? item.label : undefined}
-      >
-        <Icon className="icon" />
-        {!collapsed && (
-          <>
-            <span className="flex-1">{item.label}</span>
-            {item.badge != null && item.badge > 0 && (
-              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full
-                               bg-brand-400 text-dark-900 text-[10px] font-bold">
-                {item.badge > 99 ? '99+' : item.badge}
-              </span>
-            )}
-          </>
-        )}
-      </NavLink>
-    );
-  };
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto scrollbar-thin py-3 px-2">
+          {navItems.map(item => (
+            <NavItemComponent key={item.to} item={item} collapsed={collapsed}
+              expanded={expandedNav === item.label}
+              onExpand={() => setExpandedNav(v => v === item.label ? null : item.label)} />
+          ))}
 
-  const Sidebar = () => (
-    <div className={clsx(
-      'fixed left-0 top-0 h-screen bg-dark-800 border-r border-dark-600 flex flex-col z-30 transition-all duration-300',
-      collapsed ? 'w-16' : 'w-64'
-    )}>
-      {/* Logo */}
-      <div className={clsx('flex items-center h-16 px-4 border-b border-dark-600', !collapsed && 'gap-3')}>
-        <div className="w-8 h-8 rounded-lg bg-brand-400 flex items-center justify-center flex-shrink-0">
-          <span className="text-sm font-bold text-dark-900">M</span>
-        </div>
-        {!collapsed && (
-          <div>
-            <div className="text-white font-semibold text-sm">MMG EPM</div>
-            <div className="text-gray-500 text-xs">Project Management</div>
-          </div>
-        )}
-      </div>
+          {isAdminUser && (
+            <>
+              <div className={clsx('mx-2 my-3 border-t border-dark-700', collapsed && 'mx-1')} />
+              <p className={clsx('text-[10px] font-semibold text-gray-600 uppercase tracking-wider px-3 mb-1', collapsed && 'hidden')}>
+                Admin
+              </p>
+              {adminNavItems.map(item => (
+                <NavItemComponent key={item.to} item={item} collapsed={collapsed} expanded={false} onExpand={() => {}} />
+              ))}
+            </>
+          )}
+        </nav>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-4 space-y-0.5 scrollbar-thin">
-        {navItems.map(item => (
-          <SidebarItem key={item.to} item={item} />
-        ))}
-
-        {isAdmin() && (
-          <>
-            <div className={clsx('px-4 pt-4 pb-1', collapsed && 'hidden')}>
-              <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Administration</p>
-            </div>
-            {adminNavItems.map(item => (
-              <SidebarItem key={item.to} item={item} />
-            ))}
-          </>
-        )}
-      </nav>
-
-      {/* Collapse toggle */}
-      <div className="p-3 border-t border-dark-600">
-        <button
-          className="w-full flex items-center justify-center p-2 rounded-lg
-                     text-gray-500 hover:text-white hover:bg-dark-700 transition-colors"
-          onClick={() => setCollapsed(v => !v)}
-        >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </button>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="flex min-h-screen">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:block">
-        <Sidebar />
-      </div>
-
-      {/* Mobile sidebar overlay */}
-      {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-40">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
-          <div className="absolute left-0 top-0 h-full w-64 bg-dark-800 border-r border-dark-600 flex flex-col z-50">
-            {/* Same sidebar content — extracted as component above */}
-            <Sidebar />
-          </div>
-        </div>
-      )}
-
-      {/* Main area */}
-      <div className={clsx(
-        'flex-1 flex flex-col min-w-0 transition-all duration-300',
-        collapsed ? 'lg:ml-16' : 'lg:ml-64'
-      )}>
-        {/* Top bar */}
-        <header className="h-16 bg-[var(--bg-primary)] border-b border-[var(--border)] flex items-center px-4 gap-4 sticky top-0 z-20">
-          {/* Mobile menu */}
+        {/* Collapse toggle */}
+        <div className="p-2 border-t border-dark-700">
           <button
-            className="lg:hidden btn-icon btn-ghost"
-            onClick={() => setMobileOpen(v => !v)}
+            onClick={() => setCollapsed(v => !v)}
+            className="w-full flex items-center justify-center p-2 rounded-lg text-gray-500 hover:text-white hover:bg-dark-700 transition-colors"
           >
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Main Content ── */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top bar */}
+        <header className="h-14 bg-[var(--bg-primary)] border-b border-[var(--border)] flex items-center gap-3 px-4 flex-shrink-0 z-10">
+          {/* Mobile menu toggle */}
+          <button className="lg:hidden p-2 rounded-lg hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"
+            onClick={() => setMobileOpen(v => !v)}>
+            <Menu className="w-5 h-5" />
           </button>
 
-          {/* Global search */}
-          <div className="flex-1 max-w-md relative hidden sm:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
-            <input
-              type="search"
-              placeholder="Search projects, tasks…"
-              className="input pl-9 py-1.5 text-sm bg-[var(--bg-secondary)]"
-            />
-          </div>
+          {/* Breadcrumb / page title area */}
+          <div className="flex-1" />
 
-          <div className="flex-1 lg:flex-none" />
-
-          {/* Notifications */}
+          {/* Notification Bell */}
           <div className="relative">
             <button
-              className="btn-icon btn-ghost relative"
               onClick={() => setNotifOpen(v => !v)}
+              className="relative p-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
             >
               <Bell className="w-5 h-5" />
-              {(unreadNotifs?.length ?? 0) > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-brand-400" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
               )}
             </button>
+
+            {/* Notification dropdown */}
             {notifOpen && (
-              <div className="absolute right-0 top-full mt-2 w-80 card shadow-modal z-50 animate-slide-up">
-                <div className="card-header py-3">
-                  <span className="font-medium text-sm">Notifications</span>
-                  <button
-                    className="text-xs text-[var(--text-secondary)] hover:text-brand-500"
-                    onClick={() => notificationsApi.markAllRead().then(() => refetchNotifs())}
-                  >
-                    Mark all read
-                  </button>
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {!unreadNotifs?.length
-                    ? <div className="p-6 text-center text-sm text-[var(--text-secondary)]">All caught up!</div>
-                    : unreadNotifs.map((n: any) => (
-                      <div key={n.notificationId} className="px-4 py-3 hover:bg-[var(--bg-secondary)] border-b border-[var(--border)] last:border-0">
-                        <p className="text-sm font-medium">{n.title}</p>
-                        <p className="text-xs text-[var(--text-secondary)] mt-0.5 line-clamp-2">{n.message}</p>
-                        <p className="text-[10px] text-[var(--text-secondary)] mt-1">
-                          {new Date(n.createdAt).toLocaleString()}
-                        </p>
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
+                <div className="absolute right-0 top-11 w-80 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl shadow-modal z-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
+                    <span className="font-semibold text-sm">
+                      Notifications {unreadCount > 0 && <span className="text-red-500">({unreadCount})</span>}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={() => markAllMutation.mutate()}
+                          className="text-xs text-brand-600 hover:underline flex items-center gap-1"
+                        >
+                          <CheckCheck className="w-3 h-3" /> All read
+                        </button>
+                      )}
+                      <button onClick={() => setNotifOpen(false)}>
+                        <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {(notifList as any[]).length === 0 ? (
+                      <div className="p-8 text-center">
+                        <Bell className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                        <p className="text-sm text-gray-400">No notifications yet</p>
                       </div>
-                    ))
-                  }
+                    ) : (
+                      (notifList as any[]).map((n: any) => (
+                        <div key={n.id}
+                          className={clsx(
+                            'px-4 py-3 border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer',
+                            !n.isRead && 'bg-brand-400/5'
+                          )}
+                          onClick={() => api.patch(`/notifications/${n.id}/read`).then(() => { refetchCount(); refetchList(); })}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            {!n.isRead && <div className="w-1.5 h-1.5 rounded-full bg-brand-400 mt-1.5 flex-shrink-0" />}
+                            <div className={clsx('flex-1 min-w-0', n.isRead && 'pl-4')}>
+                              <p className="text-sm font-medium text-[var(--text-primary)] truncate">{n.title}</p>
+                              <p className="text-xs text-[var(--text-secondary)] mt-0.5 line-clamp-2">{n.message}</p>
+                              <p className="text-[10px] text-gray-400 mt-1">
+                                {new Date(n.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
-
-          {/* Notifications */}
-          <NotificationBell />
 
           {/* User menu */}
           <div className="relative">
             <button
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--bg-tertiary)] transition-colors"
-              onClick={() => setUserOpen(v => !v)}
+              onClick={() => setUserMenuOpen(v => !v)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
             >
-              <div className="w-8 h-8 rounded-full bg-brand-400 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-dark-900">
-                  {user?.firstName?.charAt(0) ?? 'U'}
-                </span>
+              <div className="w-7 h-7 rounded-full bg-brand-400 flex items-center justify-center text-dark-900 text-xs font-bold">
+                {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
               </div>
-              <div className="hidden sm:block text-left">
-                <p className="text-sm font-medium text-[var(--text-primary)] leading-tight">{user?.firstName} {user?.lastName}</p>
-                <p className="text-xs text-[var(--text-secondary)] leading-tight">{user?.roles?.[0]}</p>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 text-[var(--text-secondary)] hidden sm:block" />
+              {!collapsed && (
+                <>
+                  <span className="text-sm font-medium text-[var(--text-primary)] hidden md:block">
+                    {user?.firstName}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 text-gray-400 hidden md:block" />
+                </>
+              )}
             </button>
 
-            {userOpen && (
-              <div className="absolute right-0 top-full mt-2 w-48 card shadow-modal z-50 animate-fade-in py-1">
-                <NavLink to="/profile" className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-[var(--bg-secondary)]">
-                  <User className="w-4 h-4" /> My Profile
-                </NavLink>
-                <NavLink to="/settings" className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-[var(--bg-secondary)]">
-                  <Settings className="w-4 h-4" /> Settings
-                </NavLink>
-                <hr className="my-1 border-[var(--border)]" />
-                <button
-                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-500 hover:bg-red-50"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="w-4 h-4" /> Sign out
-                </button>
-              </div>
+            {userMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                <div className="absolute right-0 top-11 w-52 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl shadow-modal z-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[var(--border)]">
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">{user?.firstName} {user?.lastName}</p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">{user?.email}</p>
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {user?.roles?.slice(0,2).map(r => (
+                        <span key={r} className="text-[10px] bg-brand-400/15 text-brand-700 rounded px-1.5 py-0.5">{r}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="py-1">
+                    <button onClick={() => { navigate('/profile'); setUserMenuOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors">
+                      <User className="w-4 h-4" /> My Profile
+                    </button>
+                    <button onClick={handleLogout}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors">
+                      <LogOut className="w-4 h-4" /> Sign Out
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>
       </div>
@@ -353,78 +301,73 @@ export default function MainLayout() {
   );
 }
 
-// ── Notification Bell Component ──────────────────────────────
-export function NotificationBell() {
-  const qc = useQueryClient();
-  const [open, setOpen] = React.useState(false);
+// ── Nav Item ──────────────────────────────────────────────────
+function NavItemComponent({
+  item, collapsed, expanded, onExpand
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  expanded: boolean;
+  onExpand: () => void;
+}) {
+  const hasChildren = item.children && item.children.length > 0;
 
-  const { data: countData } = useQuery({
-    queryKey: ['notif-count'],
-    queryFn: () => api.get('/notifications/unread-count').then(r => r.data),
-    refetchInterval: 30000,
-  });
-
-  const { data: notifications } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => api.get('/notifications', { params: { take: 10 } }).then(r => r.data),
-    enabled: open,
-  });
-
-  const readAllMutation = useMutation({
-    mutationFn: () => api.post('/notifications/read-all'),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['notif-count'] }); qc.invalidateQueries({ queryKey: ['notifications'] }); },
-  });
-
-  const unread = countData?.count ?? 0;
-  const notifList: any[] = Array.isArray(notifications) ? notifications : [];
+  if (hasChildren) {
+    return (
+      <div>
+        <button
+          onClick={onExpand}
+          className={clsx(
+            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-0.5',
+            'text-gray-400 hover:bg-dark-700 hover:text-white',
+            collapsed && 'justify-center px-2'
+          )}
+          title={collapsed ? item.label : undefined}
+        >
+          <item.icon className="w-5 h-5 flex-shrink-0" />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">{item.label}</span>
+              <ChevronDown className={clsx('w-3.5 h-3.5 transition-transform', expanded && 'rotate-180')} />
+            </>
+          )}
+        </button>
+        {!collapsed && expanded && (
+          <div className="ml-4 pl-3 border-l border-dark-700 mb-1">
+            {item.children!.map(child => (
+              <NavLink key={child.to} to={child.to}
+                className={({ isActive }) => clsx(
+                  'flex items-center px-3 py-2 rounded-lg text-xs transition-colors mb-0.5',
+                  isActive ? 'text-brand-400 bg-brand-400/10' : 'text-gray-400 hover:text-white hover:bg-dark-700'
+                )}>
+                {child.label}
+              </NavLink>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="relative">
-      <button onClick={() => setOpen(v => !v)}
-        className="relative p-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors">
-        <Bell className="w-5 h-5" />
-        {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-            {unread > 9 ? '9+' : unread}
-          </span>
-        )}
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-10 w-80 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl shadow-modal z-50 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-              <span className="font-medium text-sm">Notifications</span>
-              <div className="flex items-center gap-2">
-                {unread > 0 && (
-                  <button onClick={() => readAllMutation.mutate()} className="text-xs text-yellow-600 hover:underline flex items-center gap-1">
-                    <CheckCheck className="w-3 h-3" /> Mark all read
-                  </button>
-                )}
-                <button onClick={() => setOpen(false)}><X className="w-4 h-4 text-gray-400" /></button>
-              </div>
-            </div>
-            <div className="max-h-80 overflow-y-auto">
-              {notifList.length === 0
-                ? <div className="p-8 text-center text-gray-400 text-sm">No notifications</div>
-                : notifList.map((n: any) => (
-                  <div key={n.id} className={`px-4 py-3 border-b border-[var(--border)] hover:bg-[var(--bg-secondary)] transition-colors ${!n.isRead ? 'bg-yellow-50' : ''}`}>
-                    <div className="flex items-start gap-2">
-                      {!n.isRead && <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 mt-1.5 flex-shrink-0" />}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">{n.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5 truncate">{n.message}</p>
-                        <p className="text-xs text-gray-400 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              }
-            </div>
-          </div>
-        </>
+    <NavLink
+      to={item.to}
+      title={collapsed ? item.label : undefined}
+      className={({ isActive }) => clsx(
+        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-0.5',
+        isActive
+          ? 'bg-brand-400/10 text-brand-400 font-medium'
+          : 'text-gray-400 hover:bg-dark-700 hover:text-white',
+        collapsed && 'justify-center px-2'
       )}
-    </div>
+    >
+      <item.icon className="w-5 h-5 flex-shrink-0" />
+      {!collapsed && <span>{item.label}</span>}
+      {!collapsed && item.badge ? (
+        <span className="ml-auto text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+          {item.badge}
+        </span>
+      ) : null}
+    </NavLink>
   );
 }
