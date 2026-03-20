@@ -1740,3 +1740,133 @@ public class BudgetStateController : ControllerBase
         return Ok(new { id = budgetId, status = budget.Status, updatedAt = budget.UpdatedAt });
     }
 }
+
+// ─── Budget Lines + Commitments + Expenditures ─────────────────
+
+[ApiController, Route("api/budget"), Authorize]
+public class BudgetLinesController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    public BudgetLinesController(AppDbContext db, ICurrentUserService cu) { _db = db; _cu = cu; }
+
+    // GET lines for a budget
+    [HttpGet("{budgetId:guid}/lines")]
+    public async Task<IActionResult> GetLines(Guid budgetId)
+    {
+        var lines = await _db.BudgetWBSItems
+            .Where(l => l.BudgetId == budgetId && l.ParentId == null && !l.IsDeleted)
+            .OrderBy(l => l.WbsCode)
+            .Select(l => new {
+                l.Id, l.WbsCode, l.Category, l.SubCategory, l.AreaDescription,
+                l.Description, l.BudgetAmount,
+                CommittedAmount = _db.Commitments.Where(c => c.WBSItemId == l.Id && !c.IsDeleted).Sum(c => (decimal?)c.CommittedAmount) ?? 0,
+                ExpendedAmount  = _db.Expenditures.Where(e => e.WBSItemId == l.Id && !e.IsDeleted).Sum(e => (decimal?)e.Amount) ?? 0,
+            })
+            .ToListAsync();
+
+        var result = lines.Select(l => new BudgetLineItemDto(
+            l.Id, budgetId, l.WbsCode, l.Category ?? "", l.SubCategory,
+            l.AreaDescription, l.Description,
+            l.BudgetAmount, l.CommittedAmount, l.ExpendedAmount,
+            l.BudgetAmount - l.CommittedAmount,
+            l.BudgetAmount - l.ExpendedAmount, "Active"
+        ));
+        return Ok(result);
+    }
+
+    // POST add line item (BM-EXT-2)
+    [HttpPost("lines")]
+    public async Task<IActionResult> AddLine([FromBody] CreateBudgetLineItemRequest req)
+    {
+        var item = new BudgetWBSItem
+        {
+            BudgetId        = req.ProjectBudgetId,
+            WbsCode         = req.WbsCode,
+            Category        = req.Category,
+            SubCategory     = req.SubCategory,
+            AreaDescription = req.Area,
+            Description     = req.Detail,
+            BudgetAmount    = req.BudgetedAmount,
+            CreatedById     = _cu.UserId,
+        };
+        _db.BudgetWBSItems.Add(item);
+        await _db.SaveChangesAsync();
+        return Ok(new BudgetLineItemDto(item.Id, req.ProjectBudgetId, req.WbsCode,
+            req.Category, req.SubCategory, req.Area, req.Detail,
+            req.BudgetedAmount, 0, 0, req.BudgetedAmount, req.BudgetedAmount, "Active"));
+    }
+
+    // GET commitments for a line (BM-EXT-3)
+    [HttpGet("lines/{lineId:guid}/commitments")]
+    public async Task<IActionResult> GetCommitments(Guid lineId)
+    {
+        var items = await _db.Commitments
+            .Include(c => c.CreatedByUser)
+            .Where(c => c.WBSItemId == lineId && !c.IsDeleted)
+            .OrderByDescending(c => c.CommitmentDate)
+            .Select(c => new {
+                c.Id, c.CommitmentDate, c.CommittedAmount,
+                c.Notes, CreatedByName = c.CreatedByUser != null ? c.CreatedByUser.FullName : ""
+            }).ToListAsync();
+        return Ok(items);
+    }
+
+    // POST add commitment (BM-EXT-3)
+    [HttpPost("lines/{lineId:guid}/commitments")]
+    public async Task<IActionResult> AddCommitment(Guid lineId, [FromBody] AddCommitmentRequest req)
+    {
+        var line = await _db.BudgetWBSItems.FindAsync(lineId) ?? throw new KeyNotFoundException();
+        var commit = new Commitment
+        {
+            WBSItemId      = lineId,
+            ProjectId      = line.ProjectId,
+            CommitmentDate = req.CommitmentDate,
+            CommittedAmount = req.Amount,
+            Notes          = req.Notes,
+            CreatedById    = _cu.UserId,
+        };
+        _db.Commitments.Add(commit);
+        await _db.SaveChangesAsync();
+        return Ok(commit);
+    }
+
+    // GET expenditures for a line (BM-EXT-4)
+    [HttpGet("lines/{lineId:guid}/expenditures")]
+    public async Task<IActionResult> GetExpenditures(Guid lineId)
+    {
+        var items = await _db.Expenditures
+            .Include(e => e.CreatedByUser)
+            .Where(e => e.WBSItemId == lineId && !e.IsDeleted)
+            .OrderByDescending(e => e.PaymentDate)
+            .Select(e => new {
+                e.Id, e.PaymentDate, e.Amount,
+                e.TransactionReference, e.Description,
+                CreatedByName = e.CreatedByUser != null ? e.CreatedByUser.FullName : ""
+            }).ToListAsync();
+        return Ok(items);
+    }
+
+    // POST add expenditure (BM-EXT-4)
+    [HttpPost("lines/{lineId:guid}/expenditures")]
+    public async Task<IActionResult> AddExpenditure(Guid lineId, [FromBody] AddExpenditureRequest req)
+    {
+        var line = await _db.BudgetWBSItems.FindAsync(lineId) ?? throw new KeyNotFoundException();
+        var exp = new Expenditure
+        {
+            WBSItemId            = lineId,
+            ProjectId            = line.ProjectId,
+            PaymentDate          = req.PaymentDate,
+            Amount               = req.PaymentAmount,
+            TransactionReference = req.TransactionRef,
+            Description          = req.Notes,
+            CreatedById          = _cu.UserId,
+        };
+        _db.Expenditures.Add(exp);
+        await _db.SaveChangesAsync();
+        return Ok(exp);
+    }
+}
+
+public record AddCommitmentRequest(DateTime CommitmentDate, decimal Amount, string? Notes);
+public record AddExpenditureRequest(DateTime PaymentDate, decimal PaymentAmount, string TransactionRef, string? Notes);
