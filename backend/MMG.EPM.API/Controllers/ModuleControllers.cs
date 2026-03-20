@@ -806,8 +806,8 @@ public class LabourController : ControllerBase
         var entry = new CrewAttendance
         {
             ProjectId          = req.ProjectId,
-            ContractorId       = req.ContractorId.HasValue ? req.ContractorId : null,
-            LabourCategoryId   = req.LabourCategoryId.HasValue ? req.LabourCategoryId : null,
+            ContractorId       = req.ContractorId != null && Guid.TryParse(req.ContractorId, out var cid) ? cid : (Guid?)null,
+            LabourCategoryId   = req.LabourCategoryId != null && Guid.TryParse(req.LabourCategoryId, out var lcid) ? lcid : (Guid?)null,
             LabourName         = req.LabourName,
             TradeName          = req.TradeName,
             TradeCode          = req.TradeCode,
@@ -842,7 +842,7 @@ public class LabourController : ControllerBase
             Status         = "Present",
             PlannedCount   = e.PlannedCount,
             ActualCount    = e.ActualCount,
-            ContractorId   = e.ContractorId.HasValue ? e.ContractorId : null,
+            ContractorId   = e.ContractorId != null && Guid.TryParse(e.ContractorId, out var bcid) ? bcid : (Guid?)null,
             RecordedById   = _cu.UserId,
             ApprovalStatus = "Pending",
         }).ToList();
@@ -1758,23 +1758,37 @@ public class BudgetLinesController : ControllerBase
     public async Task<IActionResult> GetLines(Guid budgetId)
     {
         var lines = await _db.BudgetWBSItems
-            .Where(l => l.BudgetId == budgetId && l.ParentId == null && !l.IsDeleted)
+            .Where(l => l.ProjectBudgetId == budgetId && l.ParentId == null && !l.IsDeleted)
             .OrderBy(l => l.WbsCode)
-            .Select(l => new {
-                l.Id, l.WbsCode, l.Category, l.SubCategory, l.AreaDescription,
-                l.Description, l.BudgetAmount,
-                CommittedAmount = _db.Commitments.Where(c => c.WBSItemId == l.Id && !c.IsDeleted).Sum(c => (decimal?)c.CommittedAmount) ?? 0,
-                ExpendedAmount  = _db.Expenditures.Where(e => e.WBSItemId == l.Id && !e.IsDeleted).Sum(e => (decimal?)e.Amount) ?? 0,
-            })
             .ToListAsync();
 
-        var result = lines.Select(l => new BudgetLineItemDto(
-            l.Id, budgetId, l.WbsCode, l.Category ?? "", l.SubCategory,
-            l.AreaDescription, l.Description,
-            l.BudgetAmount, l.CommittedAmount, l.ExpendedAmount,
-            l.BudgetAmount - l.CommittedAmount,
-            l.BudgetAmount - l.ExpendedAmount, "Active"
-        ));
+        // Load aggregated committed + expended amounts
+        var lineIds = lines.Select(l => l.Id).ToList();
+        var committed = await _db.CommittedAmounts
+            .Where(c => lineIds.Contains(c.BudgetWBSId) && !c.IsDeleted)
+            .GroupBy(c => c.BudgetWBSId)
+            .Select(g => new { Id = g.Key, Total = g.Sum(c => c.Amount) })
+            .ToListAsync();
+        var expended = await _db.Expenditures
+            .Where(e => lineIds.Contains(e.BudgetWBSId) && !e.IsDeleted)
+            .GroupBy(e => e.BudgetWBSId)
+            .Select(g => new { Id = g.Key, Total = g.Sum(e => e.Amount) })
+            .ToListAsync();
+
+        var committedMap = committed.ToDictionary(c => c.Id, c => c.Total);
+        var expendedMap  = expended.ToDictionary(e => e.Id, e => e.Total);
+
+        var result = lines.Select(l => {
+            var comm = committedMap.GetValueOrDefault(l.Id, 0);
+            var expd = expendedMap.GetValueOrDefault(l.Id, 0);
+            return new BudgetLineItemDto(
+                l.Id, budgetId, l.WbsCode, l.Description, null,
+                null, null,
+                l.BudgetAmount, comm, expd,
+                l.BudgetAmount - comm,
+                l.BudgetAmount - expd, "Active"
+            );
+        });
         return Ok(result);
     }
 
@@ -1782,21 +1796,25 @@ public class BudgetLinesController : ControllerBase
     [HttpPost("lines")]
     public async Task<IActionResult> AddLine([FromBody] CreateBudgetLineItemRequest req)
     {
-        var item = new BudgetWBSItem
+        // Resolve ProjectId from the budget
+        var budget = req.ProjectBudgetId != Guid.Empty
+            ? await _db.ProjectBudgets.FindAsync(req.ProjectBudgetId)
+            : null;
+
+        var item = new BudgetWBS
         {
-            BudgetId        = req.ProjectBudgetId,
+            ProjectId       = budget?.ProjectId ?? Guid.Empty,
+            ProjectBudgetId = req.ProjectBudgetId,
             WbsCode         = req.WbsCode,
-            Category        = req.Category,
-            SubCategory     = req.SubCategory,
-            AreaDescription = req.Area,
-            Description     = req.Detail,
+            Description     = string.Join(" | ", new[] { req.Category, req.SubCategory, req.Area, req.Detail }
+                                .Where(s => !string.IsNullOrEmpty(s))),
             BudgetAmount    = req.BudgetedAmount,
             CreatedById     = _cu.UserId,
         };
         _db.BudgetWBSItems.Add(item);
         await _db.SaveChangesAsync();
         return Ok(new BudgetLineItemDto(item.Id, req.ProjectBudgetId, req.WbsCode,
-            req.Category, req.SubCategory, req.Area, req.Detail,
+            req.Category ?? "", req.SubCategory, req.Area, req.Detail,
             req.BudgetedAmount, 0, 0, req.BudgetedAmount, req.BudgetedAmount, "Active"));
     }
 
@@ -1804,13 +1822,13 @@ public class BudgetLinesController : ControllerBase
     [HttpGet("lines/{lineId:guid}/commitments")]
     public async Task<IActionResult> GetCommitments(Guid lineId)
     {
-        var items = await _db.Commitments
-            .Include(c => c.CreatedByUser)
-            .Where(c => c.WBSItemId == lineId && !c.IsDeleted)
+        var items = await _db.CommittedAmounts
+            .Include(c => c.RecordedBy)
+            .Where(c => c.BudgetWBSId == lineId && !c.IsDeleted)
             .OrderByDescending(c => c.CommitmentDate)
             .Select(c => new {
-                c.Id, c.CommitmentDate, c.CommittedAmount,
-                c.Notes, CreatedByName = c.CreatedByUser != null ? c.CreatedByUser.FullName : ""
+                c.Id, c.CommitmentDate, Amount = c.Amount,
+                Notes = c.Description, CreatedByName = c.RecordedBy != null ? c.RecordedBy.FullName : ""
             }).ToListAsync();
         return Ok(items);
     }
@@ -1820,18 +1838,22 @@ public class BudgetLinesController : ControllerBase
     public async Task<IActionResult> AddCommitment(Guid lineId, [FromBody] AddCommitmentRequest req)
     {
         var line = await _db.BudgetWBSItems.FindAsync(lineId) ?? throw new KeyNotFoundException();
-        var commit = new Commitment
+        var commit = new CommittedAmount
         {
-            WBSItemId      = lineId,
+            BudgetWBSId    = lineId,
             ProjectId      = line.ProjectId,
             CommitmentDate = req.CommitmentDate,
-            CommittedAmount = req.Amount,
-            Notes          = req.Notes,
-            CreatedById    = _cu.UserId,
+            Amount         = req.Amount,
+            CommitmentType = "Manual",
+            Description    = req.Notes,
+            RecordedById   = _cu.UserId,
         };
-        _db.Commitments.Add(commit);
+        _db.CommittedAmounts.Add(commit);
+        // Update the WBS item committed amount
+        line.CommittedAmount += req.Amount;
+        line.BalanceAmount    = line.BudgetAmount - line.CommittedAmount;
         await _db.SaveChangesAsync();
-        return Ok(commit);
+        return Ok(new { commit.Id, commit.CommitmentDate, Amount = commit.Amount, Notes = commit.Description });
     }
 
     // GET expenditures for a line (BM-EXT-4)
@@ -1839,13 +1861,13 @@ public class BudgetLinesController : ControllerBase
     public async Task<IActionResult> GetExpenditures(Guid lineId)
     {
         var items = await _db.Expenditures
-            .Include(e => e.CreatedByUser)
-            .Where(e => e.WBSItemId == lineId && !e.IsDeleted)
-            .OrderByDescending(e => e.PaymentDate)
+            .Include(e => e.RecordedBy)
+            .Where(e => e.BudgetWBSId == lineId && !e.IsDeleted)
+            .OrderByDescending(e => e.ExpenseDate)
             .Select(e => new {
-                e.Id, e.PaymentDate, e.Amount,
-                e.TransactionReference, e.Description,
-                CreatedByName = e.CreatedByUser != null ? e.CreatedByUser.FullName : ""
+                e.Id, PaymentDate = e.ExpenseDate, e.Amount,
+                TransactionReference = e.ReferenceNo, e.Description,
+                CreatedByName = e.RecordedBy != null ? e.RecordedBy.FullName : ""
             }).ToListAsync();
         return Ok(items);
     }
@@ -1857,17 +1879,22 @@ public class BudgetLinesController : ControllerBase
         var line = await _db.BudgetWBSItems.FindAsync(lineId) ?? throw new KeyNotFoundException();
         var exp = new Expenditure
         {
-            WBSItemId            = lineId,
-            ProjectId            = line.ProjectId,
-            PaymentDate          = req.PaymentDate,
-            Amount               = req.PaymentAmount,
-            TransactionReference = req.TransactionRef,
-            Description          = req.Notes,
-            CreatedById          = _cu.UserId,
+            BudgetWBSId  = lineId,
+            ProjectId    = line.ProjectId,
+            ExpenseDate  = req.PaymentDate,
+            Amount       = req.PaymentAmount,
+            ReferenceNo  = req.TransactionRef,
+            ExpenseType  = "Payment",
+            Description  = req.Notes,
+            RecordedById = _cu.UserId,
         };
         _db.Expenditures.Add(exp);
+        // Update the WBS item expended amount
+        line.ExpendedAmount += req.PaymentAmount;
+        line.BalanceAmount   = line.BudgetAmount - line.ExpendedAmount;
         await _db.SaveChangesAsync();
-        return Ok(exp);
+        return Ok(new { exp.Id, PaymentDate = exp.ExpenseDate, exp.Amount,
+            TransactionReference = exp.ReferenceNo, exp.Description });
     }
 }
 
