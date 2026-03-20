@@ -23,7 +23,7 @@ const STATUS_COLORS: Record<string,string> = {
   Closed:'badge-green', Accepted:'badge-green', Void:'badge-red',
 };
 const LEVEL_COLORS: Record<string,string> = {
-  Low:'text-green-600 bg-green-50', Medium:'text-yellow-700 bg-yellow-50',
+  Low:'text-green-600 bg-green-50', Medium:'text-[var(--primary)] bg-[rgba(209,17,28,0.04)]',
   High:'text-orange-600 bg-orange-50', Critical:'text-red-600 bg-red-50',
 };
 const CHART_COLORS = ['#22C55E','#F59E0B','#F97316','#EF4444','#9CA3AF','#3B82F6','#8B5CF6'];
@@ -228,7 +228,7 @@ export default function RisksPage() {
                       <td><span className={`badge ${STATUS_COLORS[r.status]||'badge-gray'}`}>{r.status}</span></td>
                       <td className="text-sm text-gray-500">{r.riskOwnerName||'—'}</td>
                       <td className="text-xs text-gray-400 max-w-[120px] truncate">{r.projectName}</td>
-                      <td className="text-yellow-600 text-sm">View →</td>
+                      <td className="text-[var(--primary)] text-sm">View →</td>
                     </tr>
                   ))}
                 </tbody>
@@ -364,13 +364,13 @@ export default function RisksPage() {
                             <div className={clsx(
                               'w-7 h-7 rounded-full mx-auto flex items-center justify-center text-xs font-bold mb-1',
                               isDone  ? 'bg-green-500 text-white' :
-                              isCurrent ? 'bg-yellow-400 text-gray-900 ring-2 ring-yellow-200' :
+                              isCurrent ? 'bg-[var(--primary)] text-white ring-2 ring-[rgba(209,17,28,0.25)]' :
                               'bg-gray-200 text-gray-400'
                             )}>
                               {isDone ? '✓' : i+1}
                             </div>
                             <p className={clsx('text-[10px] leading-tight text-center',
-                              isCurrent ? 'text-yellow-700 font-semibold' :
+                              isCurrent ? 'text-[var(--primary)] font-semibold' :
                               isDone    ? 'text-green-600' : 'text-gray-400')}>
                               {STAGE_LABELS[stage]}
                             </p>

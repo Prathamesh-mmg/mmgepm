@@ -85,7 +85,7 @@ export default function InventoryPage() {
                   </thead>
                   <tbody>
                     {isLoading
-                      ? <tr><td colSpan={7} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-brand-400" /></td></tr>
+                      ? <tr><td colSpan={7} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--primary)]" /></td></tr>
                       : !stock?.length
                         ? <tr><td colSpan={7} className="text-center py-10 text-[var(--text-secondary)]">No stock entries</td></tr>
                         : stock.map((s: any, i: number) => {

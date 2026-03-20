@@ -150,7 +150,7 @@ export default function GanttChart({ tasks, projectStart, projectEnd, readOnly =
       {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-gray-50 flex-wrap gap-y-2">
         <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-          <Calendar className="w-4 h-4 text-yellow-500" /> Gantt Chart
+          <Calendar className="w-4 h-4 w-4 h-4" style={{color:"var(--primary)"}} /> Gantt Chart
         </span>
         <div className="text-xs text-gray-400">
           {format(pStart, 'dd MMM yyyy')} → {format(pEnd, 'dd MMM yyyy')}
@@ -162,7 +162,7 @@ export default function GanttChart({ tasks, projectStart, projectEnd, readOnly =
             <button key={z} onClick={() => setZoom(z)}
               className={clsx(
                 'px-3 py-1 rounded text-xs font-medium transition-colors capitalize',
-                zoom === z ? 'bg-yellow-400 text-gray-900' : 'text-gray-500 hover:bg-gray-100'
+                zoom === z ? 'bg-[var(--primary)] text-white' : 'text-gray-500 hover:bg-gray-100'
               )}>
               {z}
             </button>
@@ -187,7 +187,7 @@ export default function GanttChart({ tasks, projectStart, projectEnd, readOnly =
             <span className="w-3 h-2 rounded bg-blue-400 inline-block" /> In Progress
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rotate-45 inline-block bg-yellow-400 border border-yellow-600" style={{borderRadius:1}} /> Milestone
+            <span className="w-2 h-2 rotate-45 inline-block bg-[var(--secondary)] border border-[var(--secondary-hover)]" style={{borderRadius:1}} /> Milestone
           </span>
         </div>
       </div>
@@ -314,7 +314,7 @@ export default function GanttChart({ tasks, projectStart, projectEnd, readOnly =
                       fill="none" stroke="#3B82F6" strokeWidth={2} />}
                     <polygon
                       points={`${cx},${cy-sz} ${cx+sz},${cy} ${cx},${cy+sz} ${cx-sz},${cy}`}
-                      fill="#FFD700" stroke="#B45309" strokeWidth={1.5} />
+                      fill="var(--secondary)" stroke="#B45309" strokeWidth={1.5} />
                     <text x={cx + sz + 6} y={cy + 4} fontSize={10} fill="#374151" fontWeight={500}>
                       ◆ {task.name.length > 20 ? task.name.slice(0, 20) + '…' : task.name}
                     </text>
@@ -375,7 +375,7 @@ export default function GanttChart({ tasks, projectStart, projectEnd, readOnly =
             {t.isCritical && <span className="badge badge-red text-xs">🔴 Critical Path</span>}
             {t.startDate && <span className="text-gray-500">Start: <strong>{format(new Date(t.startDate), 'dd MMM yyyy')}</strong></span>}
             {t.endDate   && <span className="text-gray-500">End: <strong>{format(new Date(t.endDate),   'dd MMM yyyy')}</strong></span>}
-            <span className="text-gray-500">Progress: <strong className="text-yellow-600">{t.progress}%</strong></span>
+            <span className="text-gray-500">Progress: <strong className="text-[var(--primary)]">{t.progress}%</strong></span>
             {t.assigneeName && <span className="text-gray-500">👤 {t.assigneeName}</span>}
             {t.dependencies.length > 0 && <span className="text-gray-500">{t.dependencies.length} predecessor(s)</span>}
           </div>
@@ -409,7 +409,7 @@ function TaskRow({ task, isCollapsed, isSelected, onToggle, onSelect }: {
           </button>
         ) : (
           <span className={clsx('w-1.5 h-1.5 rounded-full',
-            task.isMilestone ? 'bg-yellow-400' : 'bg-gray-300')} />
+            task.isMilestone ? 'bg-[var(--secondary)]' : 'bg-gray-300')} />
         )}
       </div>
       {/* Name */}
@@ -426,7 +426,7 @@ function TaskRow({ task, isCollapsed, isSelected, onToggle, onSelect }: {
       {/* Progress bar */}
       <div className="w-14 px-1">
         <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div className="h-full bg-yellow-400 rounded-full" style={{ width: `${task.progress}%` }} />
+          <div className="h-full rounded-full' style={{background:'var(--primary)'}}//{/* progress */}<div className='hidden" style={{ width: `${task.progress}%` }} />
         </div>
       </div>
       {/* Status dot */}

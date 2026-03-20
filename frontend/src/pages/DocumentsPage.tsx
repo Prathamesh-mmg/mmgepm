@@ -231,14 +231,14 @@ export default function DocumentsPage() {
           {/* Breadcrumb */}
           <div className="flex items-center gap-1 text-sm">
             <button onClick={() => navigateBreadcrumb(-1)}
-              className={clsx('hover:text-yellow-600', !selectedFolder && 'font-semibold text-yellow-600')}>
+              className={clsx('hover:text-[var(--primary)]', !selectedFolder && 'font-semibold text-[var(--primary)]')}>
               📁 Root
             </button>
             {folderPath.map((f, i) => (
               <span key={f.id} className="flex items-center gap-1">
                 <ChevronRight className="w-3 h-3 text-gray-400" />
                 <button onClick={() => navigateBreadcrumb(i)}
-                  className={clsx('hover:text-yellow-600', i === folderPath.length-1 && 'font-semibold text-yellow-600')}>
+                  className={clsx('hover:text-[var(--primary)]', i === folderPath.length-1 && 'font-semibold text-[var(--primary)]')}>
                   {f.name}
                 </button>
               </span>
@@ -276,7 +276,7 @@ export default function DocumentsPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {folderList.map((f:any) => (
                 <button key={f.id} onClick={() => navigateFolder(f.id, f.name)}
-                  className="card p-3 flex flex-col items-center gap-1.5 hover:border-yellow-400 hover:bg-yellow-50 transition-all text-center">
+                  className="card p-3 flex flex-col items-center gap-1.5 hover:border-[var(--primary)] hover:bg-yellow-50 transition-all text-center">
                   <FolderOpen className="w-8 h-8 text-yellow-400" />
                   <span className="text-xs text-gray-700 font-medium line-clamp-2">{f.name}</span>
                   {f.fileCount > 0 && <span className="text-[10px] text-gray-400">{f.fileCount} files</span>}
@@ -558,10 +558,10 @@ export default function DocumentsPage() {
                     const isCurrent = stage === selectedCR.status;
                     return (
                       <div key={stage} className={clsx('flex items-center gap-2 text-xs p-1.5 rounded',
-                        isCurrent && 'bg-yellow-50 text-yellow-700 font-medium')}>
+                        isCurrent && 'bg-yellow-50 text-[var(--primary)] font-medium')}>
                         <div className={clsx('w-5 h-5 rounded-full flex items-center justify-center text-[10px] flex-shrink-0',
                           isDone  ? 'bg-green-500 text-white' :
-                          isCurrent ? 'bg-yellow-400 text-gray-900' : 'bg-gray-200 text-gray-400')}>
+                          isCurrent ? 'bg-[var(--primary)] text-white' : 'bg-gray-200 text-gray-400')}>
                           {isDone ? '✓' : i+1}
                         </div>
                         {CR_STAGE_LABEL[stage] || stage}

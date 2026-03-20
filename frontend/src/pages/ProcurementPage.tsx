@@ -168,7 +168,7 @@ export default function ProcurementPage() {
             </thead>
             <tbody>
               {mrsLoading
-                ? <tr><td colSpan={8} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-brand-400" /></td></tr>
+                ? <tr><td colSpan={8} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--primary)]" /></td></tr>
                 : !mrs?.length
                   ? <tr><td colSpan={8} className="text-center py-12 text-[var(--text-secondary)]">No material requests yet</td></tr>
                   : mrs.map((mr: any) => (
@@ -205,7 +205,7 @@ export default function ProcurementPage() {
             </thead>
             <tbody>
               {posLoading
-                ? <tr><td colSpan={6} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-brand-400" /></td></tr>
+                ? <tr><td colSpan={6} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--primary)]" /></td></tr>
                 : !pos?.length
                   ? <tr><td colSpan={6} className="text-center py-12 text-[var(--text-secondary)]">No purchase orders yet</td></tr>
                   : pos.map((po: any) => (
@@ -305,7 +305,7 @@ export default function ProcurementPage() {
                     </thead>
                     <tbody>
                       {(quotes as any[]).sort((a: any, b: any) => a.unitPrice - b.unitPrice).map((q: any) => (
-                        <tr key={q.id} className={q.isSelected ? 'bg-green-50' : q.isRecommended ? 'bg-yellow-50' : ''}>
+                        <tr key={q.id} className={q.isSelected ? 'bg-green-50' : q.isRecommended ? 'bg-[rgba(209,17,28,0.04)]' : ''}>
                           <td className="font-medium">
                             {q.isRecommended && <span className="text-yellow-500 mr-1">⭐</span>}
                             {q.vendorName}

@@ -15,7 +15,7 @@ const STATUS_COLORS: Record<string, string> = {
   Completed: 'badge-success', OnHold: 'badge-danger', Cancelled: 'badge-danger',
 };
 const PRIORITY_COLORS: Record<string, string> = {
-  Low: 'text-green-600', Medium: 'text-yellow-600', High: 'text-orange-600', Critical: 'text-red-600',
+  Low: 'text-green-600', Medium: 'text-[var(--primary)]', High: 'text-orange-600', Critical: 'text-red-600',
 };
 
 type Tab = 'details' | 'progress' | 'subtasks' | 'delays' | 'comments' | 'attachments' | 'dependencies';
@@ -161,7 +161,7 @@ export default function TaskDetailPage() {
     <div className="page-container">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-        <button onClick={() => navigate('/tasks')} className="hover:text-yellow-600">Tasks</button>
+        <button onClick={() => navigate('/tasks')} className="hover:text-[var(--primary)]">Tasks</button>
         <span>/</span>
         <span className="text-gray-800 font-medium truncate max-w-xs">{task.name}</span>
       </div>
@@ -194,7 +194,7 @@ export default function TaskDetailPage() {
                 <AlertTriangle className="w-3 h-3" /> {totalDelayHours}h delayed
               </span>
             )}
-            <span className="text-lg font-bold text-yellow-600">{task.progressPercentage ?? 0}%</span>
+            <span className="text-lg font-bold text-[var(--primary)]">{task.progressPercentage ?? 0}%</span>
           </div>
         </div>
         <div className="progress-bar h-3">
@@ -263,7 +263,7 @@ export default function TaskDetailPage() {
                   <div className="flex items-center gap-3">
                     <input type="range" min="0" max="100" step="5" value={progressPct}
                       onChange={e => setPct(Number(e.target.value))} className="flex-1" />
-                    <span className="text-yellow-600 font-bold w-10">{progressPct}%</span>
+                    <span className="text-[var(--primary)] font-bold w-10">{progressPct}%</span>
                   </div>
                 </div>
                 <div className="form-group">
@@ -286,7 +286,7 @@ export default function TaskDetailPage() {
                           onClick={() => setPhotos(arr => arr.filter((_, j) => j !== i))}>×</button>
                       </div>
                     ))}
-                    <button className="w-20 h-20 border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center text-gray-400 hover:border-yellow-400 transition-colors"
+                    <button className="w-20 h-20 border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center text-gray-400 hover:border-[var(--primary)] transition-colors"
                       onClick={() => fileInputRef.current?.click()}>
                       <span className="text-2xl">+</span><span className="text-xs">Photo</span>
                     </button>
@@ -311,7 +311,7 @@ export default function TaskDetailPage() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium text-gray-800">{p.updatedByName}</span>
                       <div className="flex items-center gap-3">
-                        <span className="text-yellow-600 font-bold">{p.progressPercentage}%</span>
+                        <span className="text-[var(--primary)] font-bold">{p.progressPercentage}%</span>
                         {p.hoursLogged && <span className="text-xs text-gray-400">{p.hoursLogged}h</span>}
                         <span className="text-xs text-gray-400">{format(new Date(p.reportedAt), 'dd MMM, HH:mm')}</span>
                       </div>
@@ -398,7 +398,7 @@ export default function TaskDetailPage() {
         <div className="space-y-6">
           <div className="card">
             <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full bg-yellow-400 flex items-center justify-center text-xs font-bold text-black flex-shrink-0">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{background:"var(--primary)"}} flex-shrink-0">
                 {user?.firstName?.charAt(0)}
               </div>
               <div className="flex-1">
@@ -580,11 +580,11 @@ export default function TaskDetailPage() {
               {attachmentList.map((a: any) => (
                 <a key={a.id} href={a.fileUrl} target="_blank" rel="noreferrer"
                   className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg hover:bg-gray-50 group">
-                  <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center text-yellow-600 font-bold text-xs flex-shrink-0">
+                  <div className="w-10 h-10 bg-[rgba(209,17,28,0.08)] rounded-lg flex items-center justify-center text-[var(--primary)] font-bold text-xs flex-shrink-0">
                     {a.fileName?.split('.').pop()?.toUpperCase() || '?'}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate group-hover:text-yellow-700">{a.fileName}</p>
+                    <p className="text-sm font-medium text-gray-800 truncate group-hover:text-[var(--primary)]">{a.fileName}</p>
                     <p className="text-xs text-gray-400">{a.uploadedByName}</p>
                   </div>
                 </a>

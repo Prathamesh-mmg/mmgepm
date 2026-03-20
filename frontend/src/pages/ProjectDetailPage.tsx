@@ -111,7 +111,7 @@ export default function ProjectDetailPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview',  label: 'Overview' },
-    { key: 'schedule',  label: '📊 Gantt Schedule' },
+    { key: 'schedule',  label: 'Gantt Schedule' },
     { key: 'tasks',    label: `Tasks (${project.totalTasks ?? 0})` },
     { key: 'dpr',      label: 'DPR' },
     { key: 'labour',   label: 'Labour' },
@@ -122,7 +122,7 @@ export default function ProjectDetailPage() {
     <div className="page-container">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-        <button onClick={() => navigate('/projects')} className="hover:text-yellow-600">Projects</button>
+        <button onClick={() => navigate('/projects')} className="hover:text-[var(--primary)]">Projects</button>
         <span>/</span>
         <span className="text-gray-800 font-medium">{project.name}</span>
       </div>
@@ -152,7 +152,7 @@ export default function ProjectDetailPage() {
       <div className="card mb-6">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-          <span className="text-lg font-bold text-yellow-600">{project.overallProgress ?? 0}%</span>
+          <span className="text-lg font-bold text-[var(--primary)]">{project.overallProgress ?? 0}%</span>
         </div>
         <div className="progress-bar h-3">
           <div className="progress-fill" style={{ width: `${project.overallProgress ?? 0}%` }} />

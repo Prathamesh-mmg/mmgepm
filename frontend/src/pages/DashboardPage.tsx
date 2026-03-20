@@ -180,7 +180,7 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="font-medium text-sm">Recent Tasks</span>
-            <Link to="/tasks" className="text-xs text-yellow-600 hover:underline flex items-center gap-1">View all <ArrowRight className="w-3 h-3" /></Link>
+            <Link to="/tasks" className="text-xs text-[var(--primary)] hover:underline flex items-center gap-1">View all <ArrowRight className="w-3 h-3" /></Link>
           </div>
           <div className="divide-y divide-[var(--border)]">
             {!taskList.length
@@ -208,7 +208,7 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="font-medium text-sm">Recent Projects</span>
-            <Link to="/projects" className="text-xs text-yellow-600 hover:underline flex items-center gap-1">View all <ArrowRight className="w-3 h-3" /></Link>
+            <Link to="/projects" className="text-xs text-[var(--primary)] hover:underline flex items-center gap-1">View all <ArrowRight className="w-3 h-3" /></Link>
           </div>
           <div className="divide-y divide-[var(--border)]">
             {!projectList.length
@@ -216,14 +216,14 @@ export default function DashboardPage() {
               : projectList.map((p: any) => (
                 <Link key={p.id} to={`/projects/${p.id}`}
                   className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-secondary)] transition-colors">
-                  <div className="w-8 h-8 rounded-lg bg-yellow-400/10 flex items-center justify-center flex-shrink-0">
-                    <span className="text-xs font-bold text-yellow-700">{p.name?.charAt(0)}</span>
+                  <div className="w-8 h-8 rounded-lg bg-[rgba(209,17,28,0.08)] flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-[var(--primary)]">{p.name?.charAt(0)}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{p.name}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <div className="progress-bar flex-1 h-1.5">
-                        <div className="progress-fill bg-yellow-400" style={{ width: `${p.overallProgress ?? 0}%` }} />
+                        <div className="progress-fill" style={{ width: `${p.overallProgress ?? 0}%` }} />
                       </div>
                       <span className="text-xs text-[var(--text-secondary)] flex-shrink-0">{p.overallProgress ?? 0}%</span>
                     </div>
@@ -243,7 +243,7 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="font-medium text-sm flex items-center gap-2"><DollarSign className="w-4 h-4" /> Portfolio Budget</span>
-            <Link to="/budget" className="text-xs text-yellow-600 hover:underline">View details</Link>
+            <Link to="/budget" className="text-xs text-[var(--primary)] hover:underline">View details</Link>
           </div>
           <div className="p-6">
             <div className="grid grid-cols-3 gap-6 mb-4">
@@ -263,7 +263,7 @@ export default function DashboardPage() {
             <div className="progress-bar h-3">
               <div className="progress-fill" style={{
                 width: `${Math.min(100, stats?.budgetUtilPct ?? 0)}%`,
-                background: (stats?.budgetUtilPct ?? 0) > 80 ? '#EF4444' : '#FFD700'
+                background: (stats?.budgetUtilPct ?? 0) > 80 ? '#EF4444' : 'var(--primary)'
               }} />
             </div>
             <p className="text-xs text-[var(--text-secondary)] text-right mt-1">{stats?.budgetUtilPct ?? 0}% utilized</p>

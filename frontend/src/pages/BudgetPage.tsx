@@ -380,7 +380,7 @@ export default function BudgetPage() {
                         </thead>
                         <tbody>
                           {lineList.map((l:any) => (
-                            <tr key={l.id} className={clsx('hover:bg-gray-50', selectedLine?.id===l.id && 'bg-yellow-50')}>
+                            <tr key={l.id} className={clsx('hover:bg-gray-50', selectedLine?.id===l.id && 'bg-[rgba(209,17,28,0.04)]')}>
                               <td className="font-mono text-xs">{l.wbsCode||'—'}</td>
                               <td><span className="badge badge-blue text-xs">{l.category}</span></td>
                               <td className="text-sm text-gray-500">{l.subCategory||'—'}</td>
@@ -394,7 +394,7 @@ export default function BudgetPage() {
                               </td>
                               <td>
                                 <button onClick={() => { setSelLine(l); setTab('committed'); }}
-                                  className="text-xs text-yellow-600 hover:underline whitespace-nowrap">
+                                  className="text-xs text-[var(--primary)] hover:underline whitespace-nowrap">
                                   View →
                                 </button>
                               </td>
@@ -426,7 +426,7 @@ export default function BudgetPage() {
                     </div>
                   ) : (
                     <>
-                      <div className="card p-4 bg-yellow-50 border border-yellow-200 flex items-center justify-between flex-wrap gap-3">
+                      <div className="card p-4 bg-[rgba(209,17,28,0.04)] border border-[rgba(209,17,28,0.25)] flex items-center justify-between flex-wrap gap-3">
                         <div>
                           <p className="text-sm font-semibold text-gray-800">
                             {selectedLine.category} {selectedLine.subCategory ? `— ${selectedLine.subCategory}` : ''} {selectedLine.area ? `· ${selectedLine.area}` : ''}

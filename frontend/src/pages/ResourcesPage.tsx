@@ -64,7 +64,7 @@ export default function ResourcesPage() {
             </thead>
             <tbody>
               {isLoading
-                ? <tr><td colSpan={5} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-brand-400" /></td></tr>
+                ? <tr><td colSpan={5} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--primary)]" /></td></tr>
                 : !resources?.length
                   ? <tr><td colSpan={5} className="text-center py-10 text-[var(--text-secondary)]">No resources in pool</td></tr>
                   : resources.map((r: any) => (

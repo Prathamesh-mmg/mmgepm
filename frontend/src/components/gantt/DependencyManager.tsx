@@ -64,7 +64,7 @@ export default function DependencyManager({
         <div className="flex items-center justify-between px-5 py-4 border-b bg-gray-50">
           <div>
             <h2 className="font-semibold text-gray-800 flex items-center gap-2">
-              <Link className="w-4 h-4 text-yellow-500" /> Task Dependencies
+              <Link className="w-4 h-4 text-[var(--secondary)]" /> Task Dependencies
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">"{taskName}"</p>
           </div>
@@ -88,8 +88,8 @@ export default function DependencyManager({
                 <div key={dep.id}
                   className="flex items-center justify-between p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
                   <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded bg-yellow-100 flex items-center justify-center">
-                      <Link className="w-3 h-3 text-yellow-600" />
+                    <span className="w-6 h-6 rounded bg-[rgba(209,17,28,0.08)] flex items-center justify-center">
+                      <Link className="w-3 h-3 text-[var(--primary)]" />
                     </span>
                     <div>
                       <p className="text-sm font-medium text-gray-800">{dep.predecessorName}</p>

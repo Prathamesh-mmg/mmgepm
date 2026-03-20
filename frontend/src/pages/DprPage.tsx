@@ -140,7 +140,7 @@ export default function DprPage() {
           </div>
           <div className="p-5 space-y-4">
             {!selectedProject && (
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+              <div className="p-3 bg-[rgba(209,17,28,0.04)] border border-[rgba(209,17,28,0.25)] rounded-lg text-sm text-[var(--primary)]">
                 ⚠️ Please select a project first
               </div>
             )}
@@ -163,7 +163,7 @@ export default function DprPage() {
                       onClick={() => setForm(f => ({ ...f, weatherType: w }))}
                       className={clsx('flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border text-sm transition-colors',
                         form.weatherType === w
-                          ? 'bg-yellow-400 border-yellow-500 text-gray-900 font-medium'
+                          ? 'bg-[var(--primary)] border-[var(--primary-hover)] text-white font-medium'
                           : 'border-gray-200 hover:bg-gray-50')}>
                       {w === 'Normal' ? <Sun className="w-4 h-4" /> : <CloudRain className="w-4 h-4" />}
                       {w}
@@ -278,7 +278,7 @@ export default function DprPage() {
                           <button
                             onClick={() => generateMutation.mutate(dpr.id)}
                             disabled={generateMutation.isPending}
-                            className="p-1.5 rounded hover:bg-yellow-100 text-gray-500 hover:text-yellow-600"
+                            className="p-1.5 rounded hover:bg-yellow-100 text-gray-500 hover:text-[var(--primary)]"
                             title="Generate & Submit DPR">
                             <RefreshCw className={clsx('w-3.5 h-3.5', generateMutation.isPending && 'animate-spin')} />
                           </button>

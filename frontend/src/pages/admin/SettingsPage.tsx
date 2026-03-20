@@ -14,8 +14,8 @@ export default function SettingsPage() {
           { icon: Database, label: 'Database Maintenance',    desc: 'Audit logs, backups and cleanup'            },
         ].map(item => (
           <div key={item.label} className="card p-5 flex items-start gap-4 hover:shadow-card-hover transition-all cursor-pointer">
-            <div className="w-10 h-10 rounded-xl bg-brand-400/10 flex items-center justify-center flex-shrink-0">
-              <item.icon className="w-5 h-5 text-brand-600" />
+            <div className="w-10 h-10 rounded-xl bg-[var(--primary)]/10 flex items-center justify-center flex-shrink-0">
+              <item.icon className="w-5 h-5 text-[var(--primary)]" />
             </div>
             <div>
               <p className="font-medium">{item.label}</p>

@@ -50,7 +50,7 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 
 const PageFallback = () => (
   <div className="flex items-center justify-center py-32">
-    <Loader2 className="w-8 h-8 animate-spin text-brand-400" />
+    <Loader2 className="w-8 h-8 animate-spin text-[var(--primary)]" />
   </div>
 );
 
@@ -68,7 +68,7 @@ export default function App() {
               border:      '1px solid var(--border)',
               fontSize:    '14px',
             },
-            success: { iconTheme: { primary: '#FFD700', secondary: '#1A1A1A' } },
+            success: { iconTheme: { primary: '#D1111C', secondary: '#FFFFFF' } },
           }}
         />
 

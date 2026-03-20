@@ -102,14 +102,14 @@ export default function UsersPage() {
           </thead>
           <tbody>
             {isLoading
-              ? <tr><td colSpan={8} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-brand-400" /></td></tr>
+              ? <tr><td colSpan={8} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--primary)]" /></td></tr>
               : !users?.length
                 ? <tr><td colSpan={8} className="text-center py-10 text-[var(--text-secondary)]">No users found</td></tr>
                 : users.map((u: any) => (
                   <tr key={u.userId}>
                     <td>
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-brand-400/10 flex items-center justify-center font-bold text-brand-600 text-xs">
+                        <div className="w-8 h-8 rounded-full bg-[var(--primary)]/10 flex items-center justify-center font-bold text-[var(--primary)] text-xs">
                           {u.firstName.charAt(0)}{u.lastName.charAt(0)}
                         </div>
                         <span className="font-medium text-sm">{u.firstName} {u.lastName}</span>
@@ -157,7 +157,7 @@ export default function UsersPage() {
           <div className="modal max-w-2xl w-full">
             <div className="modal-header">
               <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-brand-400" />
+                <Shield className="w-5 h-5 text-[var(--primary)]" />
                 <h2 className="font-semibold">Create New User</h2>
               </div>
               <button className="btn-icon btn-ghost" onClick={() => { setShowCreate(false); reset(); }}>
@@ -210,8 +210,8 @@ export default function UsersPage() {
                         className={clsx(
                           'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
                           watchedRoles.includes(r.roleId)
-                            ? 'bg-brand-400 text-dark-900 border-brand-400'
-                            : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-brand-400'
+                            ? 'bg-[var(--primary)] text-[#0e0b08] border-[var(--primary)]'
+                            : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--primary)]'
                         )}
                       >
                         {r.roleName}

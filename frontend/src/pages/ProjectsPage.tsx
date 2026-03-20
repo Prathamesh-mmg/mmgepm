@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 
 const STATUS_COLORS: Record<string, string> = {
   Planning: 'badge-info', Active: 'badge-success', OnHold: 'badge-warning',
-  Completed: 'badge-primary', Cancelled: 'badge-danger',
+  Completed: 'badge-green', Cancelled: 'badge-gray',
 };
 
 const PROJECT_TYPES = ['Infrastructure','Construction','Renovation','Industrial','Commercial','Residential','Other'];
@@ -112,7 +112,7 @@ export default function ProjectsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {projects.map((p: any) => (
             <div key={p.id}
-              className="card cursor-pointer hover:shadow-md transition-all border border-transparent hover:border-yellow-300"
+              className="card cursor-pointer hover:shadow-md transition-all border border-transparent hover:border-[rgba(209,17,28,0.35)]"
               onClick={() => navigate(`/projects/${p.id}`)}>
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1 min-w-0">

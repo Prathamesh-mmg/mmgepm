@@ -33,7 +33,7 @@ export default function ProfilePage() {
 
       {/* Avatar + name */}
       <div className="card p-6 flex items-center gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-brand-400 flex items-center justify-center text-2xl font-bold text-dark-900">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--primary)] flex items-center justify-center text-2xl font-bold text-[#0e0b08]">
           {user?.firstName?.charAt(0) ?? 'U'}
         </div>
         <div>

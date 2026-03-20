@@ -12,7 +12,7 @@ const STATUS_COLORS: Record<string, string> = {
   Completed: 'badge-success', OnHold: 'badge-danger', Cancelled: 'badge-danger',
 };
 const PRIORITY_COLORS: Record<string, string> = {
-  Low: 'text-green-600', Medium: 'text-yellow-600', High: 'text-orange-600', Critical: 'text-red-600',
+  Low: 'text-green-600', Medium: 'text-[var(--primary)]', High: 'text-orange-600', Critical: 'text-red-600',
 };
 
 interface TaskForm {
@@ -198,7 +198,7 @@ export default function TasksPage() {
                     <td>
                       <div style={{ paddingLeft: `${Math.max(0, (t.level - 1)) * 20}px` }}>
                         <span
-                          className="font-medium text-gray-800 cursor-pointer hover:text-yellow-700"
+                          className="font-medium text-gray-800 cursor-pointer hover:text-[var(--primary)]"
                           onClick={() => navigate(`/tasks/${t.id}`)}
                         >
                           {t.hasChildren && <span className="text-gray-300 mr-1">▸</span>}
@@ -234,7 +234,7 @@ export default function TasksPage() {
                       {t.endDate ? new Date(t.endDate).toLocaleDateString() : '—'}
                     </td>
                     <td>
-                      <button className="text-yellow-600 hover:text-yellow-800 text-sm"
+                      <button className="text-[var(--primary)] hover:text-yellow-800 text-sm"
                         onClick={() => navigate(`/tasks/${t.id}`)}>View</button>
                     </td>
                   </tr>

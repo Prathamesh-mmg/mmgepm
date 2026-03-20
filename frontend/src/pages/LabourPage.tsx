@@ -174,7 +174,7 @@ export default function LabourPage() {
             </div>
             <div className="card p-5">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-yellow-50 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-[rgba(209,17,28,0.04)] flex items-center justify-center">
                   <Clock className="w-5 h-5 text-yellow-500" />
                 </div>
                 <div>
@@ -274,7 +274,7 @@ export default function LabourPage() {
                       <td className="text-right">
                         <span className={clsx('font-medium',
                           s.productivityPct >= 90 ? 'text-green-600' :
-                          s.productivityPct >= 70 ? 'text-yellow-600' : 'text-red-500')}>
+                          s.productivityPct >= 70 ? 'text-[var(--primary)]' : 'text-red-500')}>
                           {s.productivityPct}%
                         </span>
                       </td>
