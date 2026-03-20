@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 // src/components/layout/MainLayout.tsx
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
@@ -11,6 +12,9 @@ import {
   User, Menu, X, ChevronDown, Search, Wrench
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '../../lib/api';
+import { Bell, X, CheckCheck } from 'lucide-react';
 import { authApi, notificationsApi } from '../../lib/api';
 import clsx from 'clsx';
 
@@ -299,6 +303,9 @@ export default function MainLayout() {
             )}
           </div>
 
+          {/* Notifications */}
+          <NotificationBell />
+
           {/* User menu */}
           <div className="relative">
             <button
@@ -342,6 +349,82 @@ export default function MainLayout() {
           <Outlet />
         </main>
       </div>
+    </div>
+  );
+}
+
+// ── Notification Bell Component ──────────────────────────────
+export function NotificationBell() {
+  const qc = useQueryClient();
+  const [open, setOpen] = React.useState(false);
+
+  const { data: countData } = useQuery({
+    queryKey: ['notif-count'],
+    queryFn: () => api.get('/notifications/unread-count').then(r => r.data),
+    refetchInterval: 30000,
+  });
+
+  const { data: notifications } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.get('/notifications', { params: { take: 10 } }).then(r => r.data),
+    enabled: open,
+  });
+
+  const readAllMutation = useMutation({
+    mutationFn: () => api.post('/notifications/read-all'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['notif-count'] }); qc.invalidateQueries({ queryKey: ['notifications'] }); },
+  });
+
+  const unread = countData?.count ?? 0;
+  const notifList: any[] = Array.isArray(notifications) ? notifications : [];
+
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(v => !v)}
+        className="relative p-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors">
+        <Bell className="w-5 h-5" />
+        {unread > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-10 w-80 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl shadow-modal z-50 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
+              <span className="font-medium text-sm">Notifications</span>
+              <div className="flex items-center gap-2">
+                {unread > 0 && (
+                  <button onClick={() => readAllMutation.mutate()} className="text-xs text-yellow-600 hover:underline flex items-center gap-1">
+                    <CheckCheck className="w-3 h-3" /> Mark all read
+                  </button>
+                )}
+                <button onClick={() => setOpen(false)}><X className="w-4 h-4 text-gray-400" /></button>
+              </div>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {notifList.length === 0
+                ? <div className="p-8 text-center text-gray-400 text-sm">No notifications</div>
+                : notifList.map((n: any) => (
+                  <div key={n.id} className={`px-4 py-3 border-b border-[var(--border)] hover:bg-[var(--bg-secondary)] transition-colors ${!n.isRead ? 'bg-yellow-50' : ''}`}>
+                    <div className="flex items-start gap-2">
+                      {!n.isRead && <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 mt-1.5 flex-shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{n.title}</p>
+                        <p className="text-xs text-gray-500 mt-0.5 truncate">{n.message}</p>
+                        <p className="text-xs text-gray-400 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

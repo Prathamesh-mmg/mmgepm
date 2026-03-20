@@ -33,6 +33,7 @@ export default function TasksPage() {
   const [showModal, setShowModal]   = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'All'|'Actionable'|'Today'|'Active'|'Completed'|'Delayed'>('All');
   const [form, setForm] = useState<TaskForm>({
     projectId: projectFilter, name: '', wbsCode: '', parentTaskId: '',
     startDate: '', endDate: '', priority: 'Medium', estimatedHours: '', description: '',
@@ -98,7 +99,13 @@ export default function TasksPage() {
     a.download = 'tasks.xlsx'; a.click(); URL.revokeObjectURL(url);
   };
 
-  const taskList: any[] = Array.isArray(tasks) ? tasks : (tasks?.items ?? []);
+  const allTasks: any[] = Array.isArray(tasks) ? tasks : (tasks?.items ?? []);
+  const taskList: any[] = activeTab === 'All' ? allTasks
+    : activeTab === 'Actionable' ? allTasks.filter((t: any) => t.status === 'InProgress' || t.status === 'NotStarted')
+    : activeTab === 'Today' ? allTasks.filter((t: any) => t.endDate && new Date(t.endDate).toDateString() === new Date().toDateString())
+    : activeTab === 'Active' ? allTasks.filter((t: any) => t.status === 'InProgress')
+    : activeTab === 'Completed' ? allTasks.filter((t: any) => t.status === 'Completed')
+    : allTasks.filter((t: any) => t.endDate && new Date(t.endDate) < new Date() && t.status !== 'Completed');
   const canManage = hasRole('Admin') || hasRole('Planning Engineer') || hasRole('Project Manager') || hasRole('Site Engineer');
 
   return (
@@ -143,6 +150,23 @@ export default function TasksPage() {
             {(projects || []).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
+      </div>
+
+      {/* Status Tabs */}
+      <div className="tabs mb-0">
+        {(['All','Actionable','Today','Active','Completed','Delayed'] as const).map(tab => {
+          const count = tab === 'All' ? taskList.length
+            : tab === 'Actionable' ? taskList.filter((t: any) => t.status === 'InProgress' || t.status === 'NotStarted').length
+            : tab === 'Today' ? taskList.filter((t: any) => t.endDate && new Date(t.endDate).toDateString() === new Date().toDateString()).length
+            : tab === 'Active' ? taskList.filter((t: any) => t.status === 'InProgress').length
+            : tab === 'Completed' ? taskList.filter((t: any) => t.status === 'Completed').length
+            : taskList.filter((t: any) => t.endDate && new Date(t.endDate) < new Date() && t.status !== 'Completed').length;
+          return (
+            <button key={tab} className={`tab ${activeTab === tab ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab)}>
+              {tab} {count > 0 && <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${tab === 'Delayed' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}>{count}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* Task table */}

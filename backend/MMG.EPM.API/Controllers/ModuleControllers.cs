@@ -375,3 +375,221 @@ public class ReportsController : ControllerBase
 
 // ─── Additional DTOs for new endpoints ─────────────────────────────────────
 public record UpdateCRStatusRequest(string Status, string? Comments);
+
+// ─── Task Delays ────────────────────────────────────────────────
+
+[ApiController, Route("api/tasks/{taskId:guid}/delays"), Authorize]
+public class TaskDelaysController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    public TaskDelaysController(AppDbContext db, ICurrentUserService cu) { _db = db; _cu = cu; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetDelays(Guid taskId)
+    {
+        var delays = await _db.TaskDelays
+            .Include(d => d.LoggedBy)
+            .Where(d => d.TaskId == taskId && !d.IsDeleted)
+            .OrderByDescending(d => d.CreatedAt)
+            .Select(d => new TaskDelayDto(d.Id, d.TaskId, "", d.DelayType,
+                d.DelayHours, d.Description, d.LoggedBy.FullName, d.CreatedAt))
+            .ToListAsync();
+        return Ok(delays);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> LogDelay(Guid taskId, [FromBody] CreateTaskDelayRequest req)
+    {
+        var delay = new TaskDelay
+        {
+            TaskId = taskId, DelayType = req.DelayType,
+            DelayHours = req.DelayHours, Description = req.Description,
+            LoggedById = _cu.UserId
+        };
+        _db.TaskDelays.Add(delay);
+
+        // Update task status to indicate delay
+        var task = await _db.Tasks.FindAsync(taskId);
+        if (task != null && task.Status == "InProgress")
+            task.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+        var user = await _db.Users.FindAsync(_cu.UserId);
+        var task2 = await _db.Tasks.FindAsync(taskId);
+        return Ok(new TaskDelayDto(delay.Id, taskId, task2?.Name ?? "",
+            delay.DelayType, delay.DelayHours, delay.Description,
+            user?.FullName ?? "", delay.CreatedAt));
+    }
+}
+
+// ─── Task Comments ───────────────────────────────────────────────
+
+[ApiController, Route("api/tasks/{taskId:guid}/comments"), Authorize]
+public class TaskCommentsController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    public TaskCommentsController(AppDbContext db, ICurrentUserService cu) { _db = db; _cu = cu; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetComments(Guid taskId)
+    {
+        var comments = await _db.TaskComments
+            .Include(c => c.User)
+            .Include(c => c.Replies).ThenInclude(r => r.User)
+            .Where(c => c.TaskId == taskId && c.ParentCommentId == null && !c.IsDeleted)
+            .OrderBy(c => c.CreatedAt)
+            .ToListAsync();
+
+        return Ok(comments.Select(c => MapComment(c)));
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> AddComment(Guid taskId, [FromBody] CreateCommentRequest req)
+    {
+        var comment = new TaskComment
+        {
+            TaskId = taskId, UserId = _cu.UserId,
+            Content = req.Content, ParentCommentId = req.ParentCommentId
+        };
+        _db.TaskComments.Add(comment);
+        await _db.SaveChangesAsync();
+        var user = await _db.Users.FindAsync(_cu.UserId);
+        return Ok(new TaskCommentDto(comment.Id, taskId, _cu.UserId,
+            user?.FullName ?? "", null, comment.Content,
+            comment.ParentCommentId, comment.CreatedAt, comment.UpdatedAt, null));
+    }
+
+    [HttpDelete("{commentId:guid}")]
+    public async Task<IActionResult> Delete(Guid taskId, Guid commentId)
+    {
+        var c = await _db.TaskComments.FirstOrDefaultAsync(
+            x => x.Id == commentId && x.UserId == _cu.UserId);
+        if (c == null) return NotFound();
+        c.IsDeleted = true; c.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    private static TaskCommentDto MapComment(TaskComment c) => new(
+        c.Id, c.TaskId, c.UserId, c.User?.FullName ?? "", null,
+        c.Content, c.ParentCommentId, c.CreatedAt, c.UpdatedAt,
+        c.Replies?.Where(r => !r.IsDeleted).Select(r => MapComment(r)).ToList());
+}
+
+// ─── Notifications ───────────────────────────────────────────────
+
+[ApiController, Route("api/notifications"), Authorize]
+public class NotificationsController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    private readonly INotificationService _notif;
+    public NotificationsController(AppDbContext db, ICurrentUserService cu, INotificationService notif)
+    { _db = db; _cu = cu; _notif = notif; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll([FromQuery] bool unreadOnly = false, [FromQuery] int take = 20)
+    {
+        var q = _db.Notifications.Where(n => n.UserId == _cu.UserId && !n.IsDeleted);
+        if (unreadOnly) q = q.Where(n => !n.IsRead);
+        var items = await q.OrderByDescending(n => n.CreatedAt).Take(take)
+            .Select(n => new NotificationDto(n.Id, n.Title, n.Message, n.Type,
+                n.Module, n.EntityId, n.ActionUrl, n.IsRead, n.ReadAt, n.CreatedAt))
+            .ToListAsync();
+        return Ok(items);
+    }
+
+    [HttpGet("unread-count")]
+    public async Task<IActionResult> UnreadCount()
+    {
+        var count = await _db.Notifications.CountAsync(n => n.UserId == _cu.UserId && !n.IsRead && !n.IsDeleted);
+        return Ok(new UnreadCountDto(count));
+    }
+
+    [HttpPatch("{id:guid}/read")]
+    public async Task<IActionResult> MarkRead(Guid id)
+    {
+        await _notif.MarkAsReadAsync(id, _cu.UserId);
+        return NoContent();
+    }
+
+    [HttpPost("read-all")]
+    public async Task<IActionResult> MarkAllRead()
+    {
+        await _notif.MarkAllAsReadAsync(_cu.UserId);
+        return NoContent();
+    }
+}
+
+// ─── Enhanced Dashboard ───────────────────────────────────────────
+
+[ApiController, Route("api/dashboard/stats"), Authorize]
+public class DashboardStatsController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    public DashboardStatsController(AppDbContext db, ICurrentUserService cu) { _db = db; _cu = cu; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetStats()
+    {
+        var isAdmin = await _db.UserRoles.AnyAsync(ur => ur.UserId == _cu.UserId &&
+            (ur.Role.Name == "Admin" || ur.Role.Name == "Management"));
+
+        var projectsQ = _db.Projects.Where(p => !p.IsDeleted);
+        if (!isAdmin) projectsQ = projectsQ.Where(p =>
+            p.Members.Any(m => m.UserId == _cu.UserId && m.IsActive) ||
+            p.ProjectManagerId == _cu.UserId);
+
+        var projects = await projectsQ.ToListAsync();
+        var projectIds = projects.Select(p => p.Id).ToList();
+
+        var tasks = await _db.Tasks.Where(t => projectIds.Contains(t.ProjectId) && !t.IsDeleted).ToListAsync();
+        var risks = await _db.Risks.Where(r => projectIds.Contains(r.ProjectId) && !r.IsDeleted).ToListAsync();
+        var mrs = await _db.MaterialRequests.Where(m => projectIds.Contains(m.ProjectId) && !m.IsDeleted).ToListAsync();
+        var budgets = await _db.Expenditures.Where(e => projectIds.Contains(e.ProjectId) && !e.IsDeleted).ToListAsync();
+        var wbs = await _db.BudgetWBSItems.Where(w => projectIds.Contains(w.ProjectId) && !w.IsDeleted).ToListAsync();
+
+        var today = DateTime.UtcNow.Date;
+        var delayedTasks = tasks.Where(t => t.EndDate.HasValue && t.EndDate.Value.Date < today && t.Status != "Completed").Count();
+
+        var totalBudget = wbs.Where(w => w.ParentId == null).Sum(w => w.BudgetAmount);
+        var totalExpended = budgets.Sum(e => e.Amount);
+        var burnRate = totalBudget > 0 ? Math.Round(totalExpended / totalBudget * 100, 1) : 0;
+
+        // Monthly progress last 6 months
+        var monthly = new List<MonthlyDataPoint>();
+        for (int i = 5; i >= 0; i--)
+        {
+            var month = DateTime.UtcNow.AddMonths(-i);
+            var label = month.ToString("MMM");
+            monthly.Add(new MonthlyDataPoint(label,
+                tasks.Count(t => t.Status == "Completed" && t.UpdatedAt.Month == month.Month && t.UpdatedAt.Year == month.Year),
+                tasks.Count(t => t.CreatedAt.Month == month.Month && t.CreatedAt.Year == month.Year),
+                tasks.Count(t => t.EndDate.HasValue && t.EndDate.Value.Month == month.Month && t.Status != "Completed")));
+        }
+
+        var stats = new DashboardStatsDto(
+            projects.Count, projects.Count(p => p.Status == "Active"),
+            projects.Count(p => p.Status == "Completed"), projects.Count(p => p.Status == "OnHold"),
+            tasks.Count, tasks.Count(t => t.Status == "Completed"),
+            tasks.Count(t => t.Status == "InProgress"), delayedTasks,
+            risks.Count(r => r.Status != "Closed"), risks.Count(r => r.RiskLevel == "Critical"),
+            risks.Count(r => r.RiskLevel == "High"),
+            mrs.Count(m => m.Status == "Draft" || m.Status == "Submitted"),
+            0, totalBudget, totalExpended, burnRate,
+            new[] { "Planning","Active","OnHold","Completed","Cancelled" }
+                .Select(s => new ChartDataPoint(s, projects.Count(p => p.Status == s), null)).ToList(),
+            new[] { "NotStarted","InProgress","Completed","OnHold","Cancelled" }
+                .Select(s => new ChartDataPoint(s, tasks.Count(t => t.Status == s), null)).ToList(),
+            new[] { "Low","Medium","High","Critical" }
+                .Select(s => new ChartDataPoint(s, risks.Count(r => r.RiskLevel == s && r.Status != "Closed"), null)).ToList(),
+            monthly,
+            new List<RecentActivityDto>()
+        );
+
+        return Ok(stats);
+    }
+}

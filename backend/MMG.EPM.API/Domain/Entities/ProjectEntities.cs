@@ -239,3 +239,33 @@ public class DPRReport : BaseEntity
     [ForeignKey(nameof(SubmittedById))] public User? SubmittedBy { get; set; }
     [ForeignKey(nameof(ApprovedById))]  public User? ApprovedBy  { get; set; }
 }
+
+// ─── Task Delays ──────────────────────────────────────────────
+
+public class TaskDelay : BaseEntity
+{
+    public Guid TaskId { get; set; }
+    [Required, MaxLength(50)] public string DelayType { get; set; } = "";
+    // Weather | Material | Labour | Equipment | Client | Other
+    [Column(TypeName = "decimal(10,2)")] public decimal DelayHours { get; set; }
+    [MaxLength(2000)] public string? Description { get; set; }
+    public Guid LoggedById { get; set; }
+
+    public ProjectTask Task { get; set; } = null!;
+    [ForeignKey(nameof(LoggedById))] public User LoggedBy { get; set; } = null!;
+}
+
+// ─── Task Comments ─────────────────────────────────────────────
+
+public class TaskComment : BaseEntity
+{
+    public Guid TaskId { get; set; }
+    public Guid UserId { get; set; }
+    [Required, MaxLength(2000)] public string Content { get; set; } = "";
+    public Guid? ParentCommentId { get; set; }
+
+    public ProjectTask Task { get; set; } = null!;
+    public User User { get; set; } = null!;
+    [ForeignKey(nameof(ParentCommentId))] public TaskComment? ParentComment { get; set; }
+    public ICollection<TaskComment> Replies { get; set; } = new List<TaskComment>();
+}

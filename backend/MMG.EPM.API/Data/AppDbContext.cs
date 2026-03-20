@@ -75,6 +75,8 @@ public class AppDbContext : DbContext
     public DbSet<Risk>             Risks             => Set<Risk>();
     public DbSet<RiskStakeholder>  RiskStakeholders  => Set<RiskStakeholder>();
     public DbSet<RiskUpdate>       RiskUpdates       => Set<RiskUpdate>();
+    public DbSet<TaskDelay>        TaskDelays         => Set<TaskDelay>();
+    public DbSet<TaskComment>      TaskComments       => Set<TaskComment>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -139,6 +141,8 @@ public class AppDbContext : DbContext
         mb.Entity<Expenditure>().ToTable("Expenditures", "Budget");
 
         mb.Entity<Risk>().ToTable("Risks", "Risk");
+        mb.Entity<TaskDelay>().ToTable("TaskDelays", "Project");
+        mb.Entity<TaskComment>().ToTable("TaskComments", "Project");
         mb.Entity<RiskStakeholder>().ToTable("RiskStakeholders", "Risk");
         mb.Entity<RiskUpdate>().ToTable("RiskUpdates", "Risk");
 
@@ -180,3 +184,6 @@ public class AppDbContext : DbContext
         mb.Entity<StockLedgerEntry>().Property(s => s.Quantity).HasPrecision(14, 3);
     }
 }
+
+// Add to AppDbContext - Task extensions
+// NOTE: Add these properties to the AppDbContext class body

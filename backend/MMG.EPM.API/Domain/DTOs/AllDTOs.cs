@@ -259,3 +259,46 @@ public record PagedResult<T>(List<T> Items, int TotalCount, int Page, int PageSi
 public record ApiResponse<T>(bool Success, T? Data, string? Message, List<string>? Errors = null);
 
 public record ApiError(string Message, string? Code = null, Dictionary<string, string[]>? ValidationErrors = null);
+
+// ─── Task Delays ───────────────────────────────────────────────
+public record TaskDelayDto(
+    Guid Id, Guid TaskId, string TaskName,
+    string DelayType, decimal DelayHours,
+    string? Description, string LoggedByName, DateTime CreatedAt);
+
+public record CreateTaskDelayRequest(
+    string DelayType, decimal DelayHours, string? Description);
+
+// ─── Task Comments ─────────────────────────────────────────────
+public record TaskCommentDto(
+    Guid Id, Guid TaskId, Guid UserId, string UserName,
+    string? UserAvatar, string Content,
+    Guid? ParentCommentId, DateTime CreatedAt, DateTime UpdatedAt,
+    List<TaskCommentDto>? Replies);
+
+public record CreateCommentRequest(string Content, Guid? ParentCommentId);
+
+// ─── Notifications ─────────────────────────────────────────────
+public record NotificationDto(
+    Guid Id, string Title, string Message, string? Type,
+    string? Module, Guid? EntityId, string? ActionUrl,
+    bool IsRead, DateTime? ReadAt, DateTime CreatedAt);
+
+public record UnreadCountDto(int Count);
+
+// ─── Dashboard Stats ───────────────────────────────────────────
+public record DashboardStatsDto(
+    int TotalProjects, int ActiveProjects, int CompletedProjects, int OnHoldProjects,
+    int TotalTasks, int CompletedTasks, int InProgressTasks, int DelayedTasks,
+    int OpenRisks, int CriticalRisks, int HighRisks,
+    int PendingMRs, int ActiveBudgets,
+    decimal TotalBudget, decimal TotalExpended, decimal BudgetUtilPct,
+    List<ChartDataPoint> ProjectsByStatus,
+    List<ChartDataPoint> TasksByStatus,
+    List<ChartDataPoint> RisksBySeverity,
+    List<MonthlyDataPoint> MonthlyProgress,
+    List<RecentActivityDto> RecentActivities);
+
+public record ChartDataPoint(string Label, int Value, string? Color);
+public record MonthlyDataPoint(string Month, int Completed, int Created, int Delayed);
+public record RecentActivityDto(string Type, string Title, string? ProjectName, DateTime Timestamp, string? UserName);

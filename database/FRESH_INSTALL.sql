@@ -1080,3 +1080,42 @@ PRINT ' MMG EPM installed successfully!';
 PRINT ' Login: admin@mmgepm.com / Admin@123';
 PRINT '=============================================';
 GO
+
+-- ============================================================
+-- TASK DELAYS & COMMENTS (missing from initial schema)
+-- ============================================================
+
+CREATE TABLE Project.TaskDelays (
+    Id          UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+    TaskId      UNIQUEIDENTIFIER NOT NULL REFERENCES Project.Tasks(Id),
+    DelayType   NVARCHAR(50)     NOT NULL,
+    DelayHours  DECIMAL(10,2)    NOT NULL,
+    Description NVARCHAR(2000)   NULL,
+    LoggedById  UNIQUEIDENTIFIER NOT NULL REFERENCES Auth.Users(Id),
+    CreatedAt   DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt   DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedById UNIQUEIDENTIFIER NULL,
+    UpdatedById UNIQUEIDENTIFIER NULL,
+    IsDeleted   BIT              NOT NULL DEFAULT 0,
+    DeletedAt   DATETIME2        NULL
+);
+GO
+
+CREATE TABLE Project.TaskComments (
+    Id              UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+    TaskId          UNIQUEIDENTIFIER NOT NULL REFERENCES Project.Tasks(Id),
+    UserId          UNIQUEIDENTIFIER NOT NULL REFERENCES Auth.Users(Id),
+    Content         NVARCHAR(2000)   NOT NULL,
+    ParentCommentId UNIQUEIDENTIFIER NULL,
+    CreatedAt       DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt       DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedById     UNIQUEIDENTIFIER NULL,
+    UpdatedById     UNIQUEIDENTIFIER NULL,
+    IsDeleted       BIT              NOT NULL DEFAULT 0,
+    DeletedAt       DATETIME2        NULL,
+    CONSTRAINT FK_TaskComments_Parent FOREIGN KEY (ParentCommentId) REFERENCES Project.TaskComments(Id)
+);
+GO
+
+PRINT 'Task Delays and Comments tables added';
+GO
