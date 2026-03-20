@@ -115,6 +115,7 @@ builder.Services.AddScoped<IBudgetService,      BudgetService>();
 builder.Services.AddScoped<IRiskService,        RiskService>();
 builder.Services.AddScoped<IDashboardService,   DashboardService>();
 builder.Services.AddScoped<IReportService,      ReportService>();
+builder.Services.AddScoped<IDprService,         DprService>();
 builder.Services.AddScoped<IAuditService,            AuditService>();
 builder.Services.AddScoped<IUserManagementService,   UserManagementService>();
 

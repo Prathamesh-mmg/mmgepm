@@ -39,8 +39,7 @@ public class DprService : IDprService
         var workProgress = await _db.WorkProgress
             .Include(wp => wp.Task)
             .Include(wp => wp.UpdatedBy)
-            .Where(wp => wp.TaskId != null
-                && wp.Task.ProjectId == projectId
+            .Where(wp => wp.Task.ProjectId == projectId
                 && wp.ReportedAt.Date == targetDate
                 && !wp.IsDeleted)
             .Select(wp => new DprTaskSection(
