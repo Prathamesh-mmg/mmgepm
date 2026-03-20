@@ -743,3 +743,374 @@ public class GanttController : ControllerBase
         return critical;
     }
 }
+
+// ─── Labour Controller ─────────────────────────────────────────
+
+[ApiController, Route("api/labour"), Authorize]
+public class LabourController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    private readonly INotificationService _notif;
+
+    public LabourController(AppDbContext db, ICurrentUserService cu, INotificationService notif)
+    { _db = db; _cu = cu; _notif = notif; }
+
+    // GET all attendance for a project/date
+    [HttpGet]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] Guid? projectId, [FromQuery] string? date,
+        [FromQuery] string? approvalStatus, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    {
+        var q = _db.CrewAttendance
+            .Include(a => a.Contractor).Include(a => a.LabourCategory)
+            .Include(a => a.RecordedBy).Include(a => a.ApprovedBy)
+            .Where(a => !a.IsDeleted);
+
+        if (projectId.HasValue) q = q.Where(a => a.ProjectId == projectId.Value);
+        if (!string.IsNullOrEmpty(date) && DateTime.TryParse(date, out var d))
+            q = q.Where(a => a.AttendanceDate.Date == d.Date);
+        if (!string.IsNullOrEmpty(approvalStatus))
+            q = q.Where(a => a.ApprovalStatus == approvalStatus);
+
+        var total = await q.CountAsync();
+        var items = await q.OrderByDescending(a => a.AttendanceDate)
+            .ThenBy(a => a.TradeName)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(a => MapEntry(a)).ToListAsync();
+
+        return Ok(new PagedResult<LabourEntryDto>(items, total, page, pageSize,
+            (int)Math.Ceiling((double)total / pageSize)));
+    }
+
+    // GET pending approvals
+    [HttpGet("pending-approvals")]
+    public async Task<IActionResult> PendingApprovals([FromQuery] Guid? projectId)
+    {
+        var q = _db.CrewAttendance
+            .Include(a => a.RecordedBy).Include(a => a.Contractor)
+            .Where(a => a.ApprovalStatus == "Pending" && !a.IsDeleted);
+        if (projectId.HasValue) q = q.Where(a => a.ProjectId == projectId.Value);
+        var items = await q.OrderBy(a => a.AttendanceDate)
+            .Select(a => MapEntry(a)).ToListAsync();
+        return Ok(items);
+    }
+
+    // POST single entry
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateLabourEntryRequest req)
+    {
+        var entry = new CrewAttendance
+        {
+            ProjectId          = req.ProjectId,
+            ContractorId       = req.ContractorId.HasValue ? req.ContractorId : null,
+            LabourCategoryId   = req.LabourCategoryId.HasValue ? req.LabourCategoryId : null,
+            LabourName         = req.LabourName,
+            TradeName          = req.TradeName,
+            TradeCode          = req.TradeCode,
+            AttendanceDate     = req.AttendanceDate.Date,
+            Status             = req.Status,
+            PlannedCount       = req.PlannedCount,
+            ActualCount        = req.ActualCount,
+            HoursWorked        = req.HoursWorked,
+            DailyRate          = req.DailyRate,
+            Notes              = req.Notes,
+            RecordedById       = _cu.UserId,
+            ApprovalStatus     = "Pending",
+        };
+        _db.CrewAttendance.Add(entry);
+        await _db.SaveChangesAsync();
+
+        // Notify supervisors for approval
+        await NotifySupervisors(req.ProjectId, entry.Id);
+        return Ok(MapEntry(entry));
+    }
+
+    // POST bulk entry (trade-wise table M2-1)
+    [HttpPost("bulk")]
+    public async Task<IActionResult> BulkCreate([FromBody] BulkLabourEntryRequest req)
+    {
+        var entries = req.Entries.Select(e => new CrewAttendance
+        {
+            ProjectId      = req.ProjectId,
+            LabourName     = e.TradeName,
+            TradeName      = e.TradeName,
+            AttendanceDate = req.AttendanceDate.Date,
+            Status         = "Present",
+            PlannedCount   = e.PlannedCount,
+            ActualCount    = e.ActualCount,
+            ContractorId   = e.ContractorId.HasValue ? e.ContractorId : null,
+            RecordedById   = _cu.UserId,
+            ApprovalStatus = "Pending",
+        }).ToList();
+
+        _db.CrewAttendance.AddRange(entries);
+        await _db.SaveChangesAsync();
+        await NotifySupervisors(req.ProjectId, null);
+        return Ok(new { count = entries.Count, message = $"{entries.Count} entries recorded" });
+    }
+
+    // PATCH approve/reject
+    [HttpPatch("{id:guid}/approve")]
+    public async Task<IActionResult> Approve(Guid id, [FromBody] ApproveLabourRequest req)
+    {
+        var entry = await _db.CrewAttendance.FindAsync(id)
+            ?? throw new KeyNotFoundException("Entry not found");
+
+        entry.ApprovalStatus    = req.Approve ? "Approved" : "Rejected";
+        entry.ApprovedById      = _cu.UserId;
+        entry.ApprovedAt        = DateTime.UtcNow;
+        entry.RejectionRemarks  = req.Approve ? null : req.Remarks;
+        entry.UpdatedAt         = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        if (entry.RecordedById.HasValue)
+        {
+            var msg = req.Approve
+                ? $"Your labour entry for {entry.AttendanceDate:dd MMM} has been approved."
+                : $"Your labour entry for {entry.AttendanceDate:dd MMM} was rejected: {req.Remarks}";
+            await _notif.SendAsync(entry.RecordedById.Value,
+                req.Approve ? "Labour Entry Approved" : "Labour Entry Rejected",
+                msg, req.Approve ? "Success" : "Warning", "Labour");
+        }
+
+        await _db.Entry(entry).Reference(e => e.RecordedBy).LoadAsync();
+        await _db.Entry(entry).Reference(e => e.ApprovedBy).LoadAsync();
+        return Ok(MapEntry(entry));
+    }
+
+    // GET dashboard summary
+    [HttpGet("dashboard")]
+    public async Task<IActionResult> Dashboard([FromQuery] Guid? projectId)
+    {
+        var today = DateTime.Today;
+        var weekAgo = today.AddDays(-7);
+
+        var q = _db.CrewAttendance.Where(a => !a.IsDeleted);
+        if (projectId.HasValue) q = q.Where(a => a.ProjectId == projectId.Value);
+
+        var todayEntries = await q.Where(a => a.AttendanceDate.Date == today).ToListAsync();
+        var weekEntries  = await q.Where(a => a.AttendanceDate.Date >= weekAgo).ToListAsync();
+        var pendingCount = await q.CountAsync(a => a.ApprovalStatus == "Pending");
+
+        // Today summary by trade
+        var todaySummary = todayEntries
+            .Where(a => a.ApprovalStatus != "Rejected")
+            .GroupBy(a => a.TradeName ?? "Other")
+            .Select(g => new LabourSummaryDto(
+                g.Key,
+                g.Sum(a => a.PlannedCount ?? 0),
+                g.Sum(a => a.ActualCount ?? 0),
+                g.Sum(a => (a.ActualCount ?? 0) - (a.PlannedCount ?? 0)),
+                g.Sum(a => a.PlannedCount ?? 0) > 0
+                    ? Math.Round((decimal)g.Sum(a => a.ActualCount ?? 0) / g.Sum(a => a.PlannedCount ?? 0) * 100, 1)
+                    : 0,
+                today.ToString("dd MMM")
+            )).ToList();
+
+        // Weekly trend
+        var weeklyTrend = Enumerable.Range(0, 7).Select(i =>
+        {
+            var day = today.AddDays(-6 + i);
+            var dayEntries = weekEntries.Where(a => a.AttendanceDate.Date == day.Date
+                && a.ApprovalStatus != "Rejected").ToList();
+            return new LabourChartPoint(
+                day.ToString("EEE"),
+                dayEntries.Sum(a => a.PlannedCount ?? 0),
+                dayEntries.Sum(a => a.ActualCount ?? 0)
+            );
+        }).ToList();
+
+        // Trade distribution today
+        var tradeDistrib = todaySummary
+            .Select(s => new LabourChartPoint(s.TradeName, s.TotalPlanned, s.TotalActual))
+            .ToList();
+
+        return Ok(new LabourDashboardDto(
+            todayEntries.Where(a => a.ApprovalStatus != "Rejected").Sum(a => a.ActualCount ?? 0),
+            todayEntries.Sum(a => a.PlannedCount ?? 0),
+            pendingCount,
+            todaySummary, weeklyTrend, tradeDistrib
+        ));
+    }
+
+    // GET labour categories
+    [HttpGet("categories")]
+    public async Task<IActionResult> GetCategories()
+    {
+        var cats = await _db.LabourCategories
+            .Where(c => !c.IsDeleted && c.IsActive)
+            .OrderBy(c => c.Name)
+            .Select(c => new { c.Id, c.Name, c.TradeCode, c.DefaultDailyRate })
+            .ToListAsync();
+        return Ok(cats);
+    }
+
+    private async Task NotifySupervisors(Guid projectId, Guid? entryId)
+    {
+        var supervisorIds = await _db.ProjectMembers
+            .Where(m => m.ProjectId == projectId && m.IsActive &&
+                (m.ProjectRole == "ProjectManager" || m.ProjectRole == "LabourManager"))
+            .Select(m => m.UserId).Distinct().ToListAsync();
+
+        foreach (var uid in supervisorIds)
+            await _notif.SendAsync(uid, "Labour Entry Pending Approval",
+                "A new labour attendance entry requires your approval.", "Info", "Labour");
+    }
+
+    private static LabourEntryDto MapEntry(CrewAttendance a) => new(
+        a.Id, a.ProjectId,
+        a.Contractor?.Name, a.TradeName ?? a.LabourCategory?.Name, a.TradeCode,
+        a.LabourName, a.AttendanceDate, a.Status,
+        a.PlannedCount, a.ActualCount, a.HoursWorked, a.DailyRate, a.Notes,
+        a.ApprovalStatus, a.RecordedBy?.FullName, a.ApprovedBy?.FullName,
+        a.ApprovedAt, a.RejectionRemarks);
+}
+
+// ─── DPR Controller ───────────────────────────────────────────
+
+[ApiController, Route("api/dpr"), Authorize]
+public class DprController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    private readonly IDprService _dprService;
+
+    public DprController(AppDbContext db, ICurrentUserService cu, IDprService dprService)
+    { _db = db; _cu = cu; _dprService = dprService; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] Guid? projectId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        var q = _db.DPRReports.Include(d => d.Project)
+            .Include(d => d.SubmittedBy).Include(d => d.ApprovedBy)
+            .Where(d => !d.IsDeleted);
+        if (projectId.HasValue) q = q.Where(d => d.ProjectId == projectId.Value);
+        var total = await q.CountAsync();
+        var items = await q.OrderByDescending(d => d.ReportDate)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(d => MapDpr(d, null, null, null, null)).ToListAsync();
+        return Ok(new PagedResult<DprDto>(items, total, page, pageSize,
+            (int)Math.Ceiling((double)total / pageSize)));
+    }
+
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetById(Guid id)
+    {
+        var dpr = await _db.DPRReports.Include(d => d.Project)
+            .Include(d => d.SubmittedBy).Include(d => d.ApprovedBy)
+            .FirstOrDefaultAsync(d => d.Id == id && !d.IsDeleted);
+        if (dpr == null) return NotFound();
+
+        var compiled = await _dprService.CompileDprSectionsAsync(dpr.ProjectId, dpr.ReportDate);
+        return Ok(MapDpr(dpr,
+            compiled.WorkProgress, compiled.Delays,
+            compiled.Labour, compiled.Risks));
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateDprRequest req)
+    {
+        // Check if DPR already exists for this date/project
+        var existing = await _db.DPRReports.FirstOrDefaultAsync(d =>
+            d.ProjectId == req.ProjectId &&
+            d.ReportDate.Date == DateTime.Today.Date && !d.IsDeleted);
+        if (existing != null)
+            return BadRequest(new { message = "A DPR already exists for today" });
+
+        var dpr = new DPRReport
+        {
+            ProjectId          = req.ProjectId,
+            ReportDate         = DateTime.Today,
+            LocationOfWork     = req.LocationOfWork,
+            WeatherCondition   = req.WeatherCondition,
+            WeatherType        = req.WeatherType ?? "Normal",
+            WorkCompleted      = req.WorkCompleted,
+            PlannedForTomorrow = req.PlannedForTomorrow,
+            Issues             = req.Issues,
+            SafetyObservations = req.SafetyObservations,
+            Status             = "Draft",
+            CreatedById        = _cu.UserId,
+        };
+        _db.DPRReports.Add(dpr);
+        await _db.SaveChangesAsync();
+        return Ok(MapDpr(dpr, null, null, null, null));
+    }
+
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateDprRequest req)
+    {
+        var dpr = await _db.DPRReports.FindAsync(id) ?? throw new KeyNotFoundException();
+        dpr.LocationOfWork     = req.LocationOfWork;
+        dpr.WeatherCondition   = req.WeatherCondition;
+        dpr.WeatherType        = req.WeatherType;
+        dpr.WorkCompleted      = req.WorkCompleted;
+        dpr.PlannedForTomorrow = req.PlannedForTomorrow;
+        dpr.Issues             = req.Issues;
+        dpr.SafetyObservations = req.SafetyObservations;
+        dpr.UpdatedAt          = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(MapDpr(dpr, null, null, null, null));
+    }
+
+    [HttpPost("{id:guid}/generate")]
+    public async Task<IActionResult> Generate(Guid id)
+    {
+        var dpr = await _db.DPRReports.Include(d => d.Project)
+            .FirstOrDefaultAsync(d => d.Id == id && !d.IsDeleted)
+            ?? throw new KeyNotFoundException();
+
+        var compiled = await _dprService.CompileDprSectionsAsync(dpr.ProjectId, dpr.ReportDate);
+
+        // Update counts from compiled data
+        dpr.LabourCount    = compiled.Labour?.Sum(l => l.Actual) ?? 0;
+        dpr.Status         = "Submitted";
+        dpr.SubmittedById  = _cu.UserId;
+        dpr.SubmittedAt    = DateTime.UtcNow;
+        dpr.UpdatedAt      = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(MapDpr(dpr, compiled.WorkProgress, compiled.Delays, compiled.Labour, compiled.Risks));
+    }
+
+    [HttpPatch("{id:guid}/approve")]
+    public async Task<IActionResult> Approve(Guid id, [FromBody] ApproveDprRequest req)
+    {
+        var dpr = await _db.DPRReports.FindAsync(id) ?? throw new KeyNotFoundException();
+        dpr.Status          = req.Approve ? "Approved" : "Rejected";
+        dpr.ApprovedById    = _cu.UserId;
+        dpr.ApprovedAt      = DateTime.UtcNow;
+        dpr.RejectionReason = req.Approve ? null : req.Reason;
+        dpr.UpdatedAt       = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(MapDpr(dpr, null, null, null, null));
+    }
+
+    [HttpGet("{id:guid}/export")]
+    public async Task<IActionResult> ExportHtml(Guid id)
+    {
+        var dpr = await _db.DPRReports.Include(d => d.Project)
+            .Include(d => d.SubmittedBy)
+            .FirstOrDefaultAsync(d => d.Id == id && !d.IsDeleted)
+            ?? throw new KeyNotFoundException();
+
+        var compiled = await _dprService.CompileDprSectionsAsync(dpr.ProjectId, dpr.ReportDate);
+        var html = _dprService.GenerateDprHtml(dpr, compiled);
+        return Content(html, "text/html");
+    }
+
+    private static DprDto MapDpr(DPRReport d,
+        List<DprTaskSection>? work, List<DprDelaySection>? delays,
+        List<DprLabourSection>? labour, List<DprRiskSection>? risks) => new(
+        d.Id, d.ProjectId, d.Project?.Name ?? "",
+        d.ReportDate, d.WorkCompleted, d.PlannedForTomorrow,
+        d.Issues, d.SafetyObservations, d.LocationOfWork,
+        d.WeatherCondition, d.WeatherType,
+        d.LabourCount, d.EquipmentCount, d.Status, d.IsAutoGenerated,
+        d.SubmittedBy?.FullName, d.SubmittedAt,
+        d.ApprovedBy?.FullName, d.ApprovedAt,
+        d.RejectionReason, d.PdfPath,
+        work, delays, labour, risks);
+}
+

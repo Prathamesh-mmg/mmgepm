@@ -271,3 +271,28 @@ export const ganttApi = {
   getProjectGantt: (projectId: string) =>
     api.get(`/projects/${projectId}/gantt`),
 };
+// ─── Labour ────────────────────────────────────────────────────
+export const labourApi = {
+  getAll:           (params?: any) => api.get('/labour', { params }),
+  getPending:       (projectId?: string) => api.get('/labour/pending-approvals',
+                      { params: projectId ? { projectId } : {} }),
+  bulkCreate:       (data: any) => api.post('/labour/bulk', data),
+  create:           (data: any) => api.post('/labour', data),
+  approve:          (id: string, approve: boolean, remarks?: string) =>
+                      api.patch(`/labour/${id}/approve`, { approve, remarks }),
+  getDashboard:     (projectId?: string) => api.get('/labour/dashboard',
+                      { params: projectId ? { projectId } : {} }),
+  getCategories:    () => api.get('/labour/categories'),
+};
+
+// ─── DPR ───────────────────────────────────────────────────────
+export const dprApi = {
+  getAll:     (params?: any) => api.get('/dpr', { params }),
+  getById:    (id: string) => api.get(`/dpr/${id}`),
+  create:     (data: any) => api.post('/dpr', data),
+  update:     (id: string, data: any) => api.put(`/dpr/${id}`, data),
+  generate:   (id: string) => api.post(`/dpr/${id}/generate`),
+  approve:    (id: string, approve: boolean, reason?: string) =>
+                api.patch(`/dpr/${id}/approve`, { approve, reason }),
+  exportHtml: (id: string) => `${api.defaults.baseURL}/dpr/${id}/export`,
+};

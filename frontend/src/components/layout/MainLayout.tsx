@@ -7,7 +7,8 @@ import {
   LayoutDashboard, FolderKanban, CheckSquare, FileText,
   ShoppingCart, Package, DollarSign, AlertTriangle,
   Bell, Settings, ChevronLeft, ChevronRight, LogOut,
-  User, Menu, X, ChevronDown, Wrench, Users, CheckCheck
+  User, Menu, X, ChevronDown, Wrench, Users, CheckCheck,
+  HardHat, ClipboardList
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { api, authApi, notificationsApi } from '../../lib/api';
@@ -38,6 +39,8 @@ const navItems: NavItem[] = [
   { label: 'Resources',   to: '/resources',   icon: Wrench          },
   { label: 'Budget',      to: '/budget',      icon: DollarSign      },
   { label: 'Risks',       to: '/risks',       icon: AlertTriangle   },
+  { label: 'Labour',      to: '/labour',      icon: HardHat         },
+  { label: 'DPR',         to: '/dpr',         icon: ClipboardList   },
 ];
 
 const adminNavItems: NavItem[] = [
