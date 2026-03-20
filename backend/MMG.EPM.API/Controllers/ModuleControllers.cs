@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using MMG.EPM.API.Data;
 using MMG.EPM.API.Domain.DTOs;
+using MMG.EPM.API.Domain.Entities;
 using MMG.EPM.API.Infrastructure.Services;
 
 namespace MMG.EPM.API.Controllers;
