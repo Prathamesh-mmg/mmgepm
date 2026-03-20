@@ -269,3 +269,15 @@ public class TaskComment : BaseEntity
     [ForeignKey(nameof(ParentCommentId))] public TaskComment? ParentComment { get; set; }
     public ICollection<TaskComment> Replies { get; set; } = new List<TaskComment>();
 }
+// ─── Task Dependencies ──────────────────────────────────────────
+
+public class TaskDependency : BaseEntity
+{
+    public Guid TaskId        { get; set; }
+    public Guid PredecessorId { get; set; }
+    [MaxLength(20)] public string DependencyType { get; set; } = "FS"; // FS|SS|FF|SF
+    public int LagDays { get; set; } = 0;
+
+    public ProjectTask Task        { get; set; } = null!;
+    public ProjectTask Predecessor { get; set; } = null!;
+}

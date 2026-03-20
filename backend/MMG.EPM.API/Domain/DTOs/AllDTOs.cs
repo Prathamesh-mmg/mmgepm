@@ -302,3 +302,30 @@ public record DashboardStatsDto(
 public record ChartDataPoint(string Label, int Value, string? Color);
 public record MonthlyDataPoint(string Month, int Completed, int Created, int Delayed);
 public record RecentActivityDto(string Type, string Title, string? ProjectName, DateTime Timestamp, string? UserName);
+
+// ─── Task Dependencies ─────────────────────────────────────────
+public record TaskDependencyDto(
+    Guid Id, Guid TaskId, string TaskName,
+    Guid PredecessorId, string PredecessorName,
+    string DependencyType, int LagDays);
+
+public record CreateDependencyRequest(
+    Guid PredecessorId, string DependencyType = "FS", int LagDays = 0);
+
+// ─── Gantt ─────────────────────────────────────────────────────
+public record GanttTaskDto(
+    Guid Id, Guid? ParentId, string Name, string? WbsCode,
+    int Level, string Status, string Priority,
+    DateTime? StartDate, DateTime? EndDate,
+    decimal Progress, bool IsMilestone, bool HasChildren,
+    string? AssigneeName, int SortOrder,
+    List<GanttDependencyDto> Dependencies,
+    bool IsCritical);
+
+public record GanttDependencyDto(
+    Guid PredecessorId, string DependencyType, int LagDays);
+
+public record GanttDataDto(
+    List<GanttTaskDto> Tasks,
+    DateTime ProjectStart, DateTime ProjectEnd,
+    List<Guid> CriticalPath);

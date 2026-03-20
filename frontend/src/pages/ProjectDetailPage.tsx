@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, tasksApi } from '../lib/api';
+import { projectsApi, tasksApi, api } from '../lib/api';
+import GanttChart from '../components/gantt/GanttChart';
+import DependencyManager from '../components/gantt/DependencyManager';
 import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
 
@@ -14,7 +16,7 @@ const TASK_STATUS_COLORS: Record<string, string> = {
   Completed: 'badge-success', OnHold: 'badge-danger', Cancelled: 'badge-danger',
 };
 
-type Tab = 'overview' | 'tasks' | 'dpr' | 'labour' | 'members';
+type Tab = 'overview' | 'tasks' | 'schedule' | 'dpr' | 'labour' | 'members';
 
 export default function ProjectDetailPage() {
   const { id }     = useParams<{ id: string }>();
@@ -26,6 +28,7 @@ export default function ProjectDetailPage() {
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole]   = useState('TeamMember');
   const [importFile, setImportFile]   = useState<File | null>(null);
+  const [depTaskId, setDepTaskId]     = useState<string | null>(null);
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['project', id],
@@ -43,6 +46,12 @@ export default function ProjectDetailPage() {
     queryKey: ['project-dprs', id],
     queryFn:  () => projectsApi.getDPRs(id!).then(r => r.data),
     enabled:  tab === 'dpr' && !!id,
+  });
+
+  const { data: ganttData } = useQuery({
+    queryKey: ['gantt', id],
+    queryFn:  () => api.get(`/projects/${id}/gantt`).then(r => r.data),
+    enabled:  tab === 'schedule' && !!id,
   });
 
   const { data: attendance } = useQuery({
@@ -101,7 +110,8 @@ export default function ProjectDetailPage() {
   const members: any[]   = project.members ?? [];
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'overview', label: 'Overview' },
+    { key: 'overview',  label: 'Overview' },
+    { key: 'schedule',  label: '📊 Gantt Schedule' },
     { key: 'tasks',    label: `Tasks (${project.totalTasks ?? 0})` },
     { key: 'dpr',      label: 'DPR' },
     { key: 'labour',   label: 'Labour' },
@@ -265,6 +275,102 @@ export default function ProjectDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Schedule / Gantt ── */}
+      {tab === 'schedule' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-gray-800">Project Schedule — Gantt Chart</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Click any task bar to see details. Use zoom controls to change the view.
+              </p>
+            </div>
+            {canManage && (
+              <button
+                onClick={() => {
+                  if (taskList.length > 0) setDepTaskId(taskList[0].id);
+                }}
+                className="btn-ghost text-sm flex items-center gap-1.5">
+                🔗 Manage Dependencies
+              </button>
+            )}
+          </div>
+
+          {!ganttData ? (
+            <div className="card p-12 text-center">
+              <div className="animate-pulse space-y-3">
+                <div className="h-4 bg-gray-200 rounded w-1/3 mx-auto" />
+                <div className="h-48 bg-gray-100 rounded" />
+              </div>
+            </div>
+          ) : ganttData.tasks?.length === 0 ? (
+            <div className="card p-12 text-center">
+              <p className="text-4xl mb-3">📊</p>
+              <p className="text-gray-500 font-medium">No tasks with dates yet</p>
+              <p className="text-gray-400 text-sm mt-1">Add tasks with start and end dates to see the Gantt chart</p>
+              {canManage && (
+                <button onClick={() => setTab('tasks')} className="btn-primary mt-4 text-sm">
+                  + Add Tasks
+                </button>
+              )}
+            </div>
+          ) : (
+            <GanttChart
+              tasks={ganttData.tasks.map((t: any) => ({
+                id: t.id,
+                parentId: t.parentId,
+                name: t.name,
+                wbsCode: t.wbsCode,
+                level: t.level,
+                status: t.status,
+                priority: t.priority,
+                startDate: t.startDate,
+                endDate: t.endDate,
+                progress: t.progress,
+                isMilestone: t.isMilestone,
+                hasChildren: t.hasChildren,
+                assigneeName: t.assigneeName,
+                sortOrder: t.sortOrder,
+                dependencies: t.dependencies ?? [],
+                isCritical: t.isCritical,
+              }))}
+              projectStart={ganttData.projectStart}
+              projectEnd={ganttData.projectEnd}
+              readOnly={!canManage}
+            />
+          )}
+
+          {/* Dependency summary */}
+          {ganttData?.tasks && ganttData.tasks.some((t: any) => t.dependencies?.length > 0) && (
+            <div className="card p-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Dependency Summary</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {ganttData.tasks
+                  .filter((t: any) => t.dependencies?.length > 0)
+                  .map((t: any) => (
+                    <div key={t.id} className="flex items-center gap-2 text-xs">
+                      <span className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" />
+                      <span className="text-gray-700 truncate">{t.name}</span>
+                      <span className="text-gray-400 flex-shrink-0">← {t.dependencies.length}</span>
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Dependency Manager Modal */}
+      {depTaskId && (
+        <DependencyManager
+          taskId={depTaskId}
+          taskName={taskList.find((t: any) => t.id === depTaskId)?.name ?? ''}
+          allTasks={taskList.map((t: any) => ({ id: t.id, name: t.name, wbsCode: t.wbsCode }))}
+          onClose={() => setDepTaskId(null)}
+        />
       )}
 
       {/* ── DPR ── */}

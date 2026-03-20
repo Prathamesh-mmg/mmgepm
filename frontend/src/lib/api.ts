@@ -256,3 +256,18 @@ export const filesApi = {
   download: (path: string) => api.get(`/files/${path}`, { responseType: 'blob' }),
   previewUrl: (path: string) => `${BASE_URL}/files/${path}`,
 };
+// ─── Task Dependencies ─────────────────────────────────────────
+export const dependenciesApi = {
+  getAll:  (taskId: string) =>
+    api.get(`/tasks/${taskId}/dependencies`),
+  add:     (taskId: string, predecessorId: string, type = 'FS', lagDays = 0) =>
+    api.post(`/tasks/${taskId}/dependencies`, { predecessorId, dependencyType: type, lagDays }),
+  remove:  (taskId: string, depId: string) =>
+    api.delete(`/tasks/${taskId}/dependencies/${depId}`),
+};
+
+// ─── Gantt ─────────────────────────────────────────────────────
+export const ganttApi = {
+  getProjectGantt: (projectId: string) =>
+    api.get(`/projects/${projectId}/gantt`),
+};

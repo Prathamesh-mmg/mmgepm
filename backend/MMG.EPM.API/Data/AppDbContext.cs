@@ -77,6 +77,7 @@ public class AppDbContext : DbContext
     public DbSet<RiskUpdate>       RiskUpdates       => Set<RiskUpdate>();
     public DbSet<TaskDelay>        TaskDelays         => Set<TaskDelay>();
     public DbSet<TaskComment>      TaskComments       => Set<TaskComment>();
+    public DbSet<TaskDependency>   TaskDependencies   => Set<TaskDependency>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -142,6 +143,20 @@ public class AppDbContext : DbContext
 
         mb.Entity<Risk>().ToTable("Risks", "Risk");
         mb.Entity<TaskDelay>().ToTable("TaskDelays", "Project");
+        mb.Entity<TaskDependency>().ToTable("TaskDependencies", "Project");
+        mb.Entity<TaskDependency>()
+            .HasIndex(td => new { td.TaskId, td.PredecessorId })
+            .IsUnique();
+        mb.Entity<TaskDependency>()
+            .HasOne(td => td.Task)
+            .WithMany()
+            .HasForeignKey(td => td.TaskId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<TaskDependency>()
+            .HasOne(td => td.Predecessor)
+            .WithMany()
+            .HasForeignKey(td => td.PredecessorId)
+            .OnDelete(DeleteBehavior.Restrict);
         mb.Entity<TaskComment>().ToTable("TaskComments", "Project");
         mb.Entity<RiskStakeholder>().ToTable("RiskStakeholders", "Risk");
         mb.Entity<RiskUpdate>().ToTable("RiskUpdates", "Risk");

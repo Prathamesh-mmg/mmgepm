@@ -1119,3 +1119,26 @@ GO
 
 PRINT 'Task Delays and Comments tables added';
 GO
+
+-- ============================================================
+-- TASK DEPENDENCIES
+-- ============================================================
+
+CREATE TABLE Project.TaskDependencies (
+    Id              UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+    TaskId          UNIQUEIDENTIFIER NOT NULL REFERENCES Project.Tasks(Id),
+    PredecessorId   UNIQUEIDENTIFIER NOT NULL REFERENCES Project.Tasks(Id),
+    DependencyType  NVARCHAR(20)     NOT NULL DEFAULT 'FS',
+    -- FS=Finish-to-Start, SS=Start-to-Start, FF=Finish-to-Finish, SF=Start-to-Finish
+    LagDays         INT              NOT NULL DEFAULT 0,
+    CreatedAt       DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt       DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedById     UNIQUEIDENTIFIER NULL,
+    UpdatedById     UNIQUEIDENTIFIER NULL,
+    IsDeleted       BIT              NOT NULL DEFAULT 0,
+    DeletedAt       DATETIME2        NULL,
+    CONSTRAINT UQ_TaskDependency UNIQUE (TaskId, PredecessorId)
+);
+GO
+PRINT 'Task Dependencies table added';
+GO

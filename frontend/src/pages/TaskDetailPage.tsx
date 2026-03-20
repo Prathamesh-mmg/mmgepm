@@ -5,7 +5,8 @@ import { tasksApi, api } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import { AlertTriangle, MessageSquare, Send, Trash2 } from 'lucide-react';
+import { AlertTriangle, MessageSquare, Send, Trash2, Link } from 'lucide-react';
+import DependencyManager from '../components/gantt/DependencyManager';
 
 const STATUS_OPTIONS = ['NotStarted','InProgress','Completed','OnHold','Cancelled'];
 const DELAY_TYPES = ['Weather','Material','Labour','Equipment','Client','Other'];
@@ -17,7 +18,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   Low: 'text-green-600', Medium: 'text-yellow-600', High: 'text-orange-600', Critical: 'text-red-600',
 };
 
-type Tab = 'details' | 'progress' | 'subtasks' | 'delays' | 'comments' | 'attachments';
+type Tab = 'details' | 'progress' | 'subtasks' | 'delays' | 'comments' | 'attachments' | 'dependencies';
 
 export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -35,7 +36,8 @@ export default function TaskDetailPage() {
   const [delayHours, setDelayHours] = useState('');
   const [delayDesc, setDelayDesc] = useState('');
   const [commentText, setCommentText] = useState('');
-  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyTo, setReplyTo]       = useState<string | null>(null);
+  const [showDepMgr, setShowDepMgr] = useState(false);
 
   const { data: task, isLoading } = useQuery({
     queryKey: ['task', id],
@@ -65,6 +67,18 @@ export default function TaskDetailPage() {
     queryKey: ['task-comments', id],
     queryFn: () => api.get(`/tasks/${id}/comments`).then(r => r.data),
     enabled: tab === 'comments' && !!id,
+  });
+
+  const { data: taskDeps } = useQuery({
+    queryKey: ['task-deps', id],
+    queryFn: () => api.get(`/tasks/${id}/dependencies`).then(r => r.data),
+    enabled: tab === 'dependencies' && !!id,
+  });
+
+  const { data: siblingTasks } = useQuery({
+    queryKey: ['sibling-tasks', task?.projectId],
+    queryFn: () => api.get('/tasks', { params: { projectId: task?.projectId } }).then(r => r.data),
+    enabled: (tab === 'dependencies' || showDepMgr) && !!task?.projectId,
   });
 
   const { data: attachments } = useQuery({
@@ -452,6 +466,66 @@ export default function TaskDetailPage() {
             }
           </div>
         </div>
+      )}
+
+      {/* ── Dependencies ── */}
+      {tab === 'dependencies' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-gray-800">Task Dependencies</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Tasks this task depends on (predecessors)</p>
+            </div>
+            {canUpdate && (
+              <button onClick={() => setShowDepMgr(true)}
+                className="btn-primary text-sm flex items-center gap-1.5">
+                <Link className="w-4 h-4" /> Manage Dependencies
+              </button>
+            )}
+          </div>
+          <div className="card overflow-hidden p-0">
+            {depList.length === 0 ? (
+              <div className="p-10 text-center">
+                <Link className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                <p className="text-gray-400 text-sm">No predecessors defined</p>
+                <p className="text-xs text-gray-400 mt-1">Add dependencies to control task scheduling order</p>
+              </div>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Predecessor Task</th>
+                    <th>Dependency Type</th>
+                    <th>Lag Days</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {depList.map((d: any) => (
+                    <tr key={d.id}>
+                      <td className="font-medium text-sm">{d.predecessorName}</td>
+                      <td>
+                        <span className="badge badge-blue text-xs">{d.dependencyType}</span>
+                      </td>
+                      <td className="text-sm text-gray-500">
+                        {d.lagDays > 0 ? `+${d.lagDays} days` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Dependency Manager Modal */}
+      {showDepMgr && task && (
+        <DependencyManager
+          taskId={id!}
+          taskName={task.name}
+          allTasks={siblingList.map((t: any) => ({ id: t.id, name: t.name, wbsCode: t.wbsCode }))}
+          onClose={() => setShowDepMgr(false)}
+        />
       )}
 
       {/* ── Subtasks ── */}

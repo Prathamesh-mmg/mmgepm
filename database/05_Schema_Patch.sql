@@ -51,3 +51,24 @@ GO
 
 PRINT '=== Patch v2 complete ===';
 GO
+
+-- Add TaskDependencies
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='TaskDependencies' AND SCHEMA_NAME(schema_id)='Project')
+BEGIN
+    CREATE TABLE Project.TaskDependencies (
+        Id              UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        TaskId          UNIQUEIDENTIFIER NOT NULL REFERENCES Project.Tasks(Id),
+        PredecessorId   UNIQUEIDENTIFIER NOT NULL REFERENCES Project.Tasks(Id),
+        DependencyType  NVARCHAR(20)     NOT NULL DEFAULT 'FS',
+        LagDays         INT              NOT NULL DEFAULT 0,
+        CreatedAt       DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt       DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedById     UNIQUEIDENTIFIER NULL,
+        UpdatedById     UNIQUEIDENTIFIER NULL,
+        IsDeleted       BIT              NOT NULL DEFAULT 0,
+        DeletedAt       DATETIME2        NULL,
+        CONSTRAINT UQ_TaskDependency UNIQUE (TaskId, PredecessorId)
+    );
+    PRINT 'Created Project.TaskDependencies';
+END
+GO

@@ -593,3 +593,153 @@ public class DashboardStatsController : ControllerBase
         return Ok(stats);
     }
 }
+
+// ─── Task Dependencies ──────────────────────────────────────────
+
+[ApiController, Route("api/tasks/{taskId:guid}/dependencies"), Authorize]
+public class TaskDependenciesController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    public TaskDependenciesController(AppDbContext db) => _db = db;
+
+    [HttpGet]
+    public async Task<IActionResult> Get(Guid taskId)
+    {
+        var deps = await _db.TaskDependencies
+            .Include(d => d.Task).Include(d => d.Predecessor)
+            .Where(d => d.TaskId == taskId && !d.IsDeleted)
+            .Select(d => new TaskDependencyDto(
+                d.Id, d.TaskId, d.Task.Name,
+                d.PredecessorId, d.Predecessor.Name,
+                d.DependencyType, d.LagDays))
+            .ToListAsync();
+        return Ok(deps);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Add(Guid taskId, [FromBody] CreateDependencyRequest req)
+    {
+        // Circular dependency check
+        if (req.PredecessorId == taskId)
+            return BadRequest(new { message = "A task cannot depend on itself" });
+
+        // Check for circular: if taskId is already a predecessor of req.PredecessorId
+        if (await HasCircularDependency(_db, taskId, req.PredecessorId))
+            return BadRequest(new { message = "This would create a circular dependency" });
+
+        var exists = await _db.TaskDependencies.AnyAsync(d =>
+            d.TaskId == taskId && d.PredecessorId == req.PredecessorId && !d.IsDeleted);
+        if (exists)
+            return BadRequest(new { message = "Dependency already exists" });
+
+        var dep = new TaskDependency
+        {
+            TaskId = taskId, PredecessorId = req.PredecessorId,
+            DependencyType = req.DependencyType, LagDays = req.LagDays,
+        };
+        _db.TaskDependencies.Add(dep);
+        await _db.SaveChangesAsync();
+
+        var t = await _db.Tasks.FindAsync(taskId);
+        var p = await _db.Tasks.FindAsync(req.PredecessorId);
+        return Ok(new TaskDependencyDto(dep.Id, taskId, t?.Name ?? "",
+            req.PredecessorId, p?.Name ?? "", dep.DependencyType, dep.LagDays));
+    }
+
+    [HttpDelete("{depId:guid}")]
+    public async Task<IActionResult> Remove(Guid taskId, Guid depId)
+    {
+        var dep = await _db.TaskDependencies.FirstOrDefaultAsync(
+            d => d.Id == depId && d.TaskId == taskId);
+        if (dep == null) return NotFound();
+        dep.IsDeleted = true; dep.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    private static async Task<bool> HasCircularDependency(
+        AppDbContext db, Guid taskId, Guid predecessorId)
+    {
+        // BFS: check if taskId is reachable from predecessorId
+        var visited = new HashSet<Guid>();
+        var queue = new Queue<Guid>();
+        queue.Enqueue(taskId);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (current == predecessorId) return true;
+            if (visited.Contains(current)) continue;
+            visited.Add(current);
+
+            var successors = await db.TaskDependencies
+                .Where(d => d.PredecessorId == current && !d.IsDeleted)
+                .Select(d => d.TaskId).ToListAsync();
+
+            foreach (var s in successors) queue.Enqueue(s);
+        }
+        return false;
+    }
+}
+
+// ─── Gantt Data ──────────────────────────────────────────────────
+
+[ApiController, Route("api/projects/{projectId:guid}/gantt"), Authorize]
+public class GanttController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    public GanttController(AppDbContext db) => _db = db;
+
+    [HttpGet]
+    public async Task<IActionResult> GetGanttData(Guid projectId)
+    {
+        var tasks = await _db.Tasks
+            .Include(t => t.Assignee)
+            .Where(t => t.ProjectId == projectId && !t.IsDeleted)
+            .OrderBy(t => t.Level).ThenBy(t => t.SortOrder).ThenBy(t => t.WbsCode)
+            .ToListAsync();
+
+        var deps = await _db.TaskDependencies
+            .Where(d => tasks.Select(t => t.Id).Contains(d.TaskId) && !d.IsDeleted)
+            .ToListAsync();
+
+        // Simple critical path: tasks with no slack (end date = project end)
+        var projectEnd = tasks.Where(t => t.EndDate.HasValue)
+            .Select(t => t.EndDate!.Value).DefaultIfEmpty(DateTime.Today.AddMonths(1)).Max();
+        var projectStart = tasks.Where(t => t.StartDate.HasValue)
+            .Select(t => t.StartDate!.Value).DefaultIfEmpty(DateTime.Today).Min();
+
+        // Identify critical tasks (tasks on the longest path)
+        var criticalPath = ComputeCriticalPath(tasks, deps);
+
+        var ganttTasks = tasks.Select(t => new GanttTaskDto(
+            t.Id, t.ParentTaskId, t.Name, t.WbsCode,
+            t.Level, t.Status, t.Priority,
+            t.StartDate, t.EndDate,
+            t.ProgressPercentage, t.IsMilestone, t.HasChildren,
+            t.Assignee?.FullName, t.SortOrder,
+            deps.Where(d => d.TaskId == t.Id)
+                .Select(d => new GanttDependencyDto(d.PredecessorId, d.DependencyType, d.LagDays))
+                .ToList(),
+            criticalPath.Contains(t.Id)
+        )).ToList();
+
+        return Ok(new GanttDataDto(ganttTasks, projectStart, projectEnd, criticalPath.ToList()));
+    }
+
+    private static HashSet<Guid> ComputeCriticalPath(
+        List<ProjectTask> tasks, List<TaskDependency> deps)
+    {
+        var critical = new HashSet<Guid>();
+        // Mark tasks as critical if they have no float (simplistic)
+        var projectEnd = tasks.Where(t => t.EndDate.HasValue)
+            .Select(t => t.EndDate!.Value).DefaultIfEmpty(DateTime.Today).Max();
+
+        foreach (var t in tasks)
+        {
+            if (t.EndDate.HasValue && t.EndDate.Value.Date == projectEnd.Date)
+                critical.Add(t.Id);
+        }
+        return critical;
+    }
+}
