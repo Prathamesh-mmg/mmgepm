@@ -398,7 +398,7 @@ export default function TaskDetailPage() {
         <div className="space-y-6">
           <div className="card">
             <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{background:"var(--primary)"}} flex-shrink-0">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{background:"var(--primary)"}}>
                 {user?.firstName?.charAt(0)}
               </div>
               <div className="flex-1">

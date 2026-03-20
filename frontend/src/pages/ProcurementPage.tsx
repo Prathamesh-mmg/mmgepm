@@ -78,7 +78,7 @@ export default function ProcurementPage() {
 
   const selectVendorMutation = useMutation({
     mutationFn: ({ quoteId, justification }: { quoteId:string; justification?:string }) =>
-      api.post(\`/quotations/\${quoteId}/select\`, { justification }),
+      api.post(`/quotations/${quoteId}/select`, { justification }),
     onSuccess: () => { toast.success('Vendor selected'); qc.invalidateQueries({ queryKey:['quotes'] }); },
   });
 
