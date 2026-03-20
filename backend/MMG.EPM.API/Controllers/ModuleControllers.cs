@@ -1114,3 +1114,629 @@ public class DprController : ControllerBase
         work, delays, labour, risks);
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// RISK LIFECYCLE CONTROLLER (RM2-EXT-1, RM2-EXT-2, RM2-EXT-3)
+// ═══════════════════════════════════════════════════════════════
+
+[ApiController, Route("api/risks/{id:guid}/lifecycle"), Authorize]
+public class RiskLifecycleController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    private readonly INotificationService _notif;
+
+    public RiskLifecycleController(AppDbContext db, ICurrentUserService cu, INotificationService notif)
+    { _db = db; _cu = cu; _notif = notif; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetLifecycle(Guid id)
+    {
+        var r = await _db.Risks.FindAsync(id);
+        if (r == null) return NotFound();
+        return Ok(new RiskLifecycleDto(r.Id, r.RiskNumber, r.Title, r.Status,
+            r.VoidRemarks, r.RaisedOn, r.AcknowledgedOn,
+            r.AnalysisCompletedOn, r.ClosedOnTimestamp, r.RejectedOn));
+    }
+
+    // Void a risk (RM2-EXT-1)
+    [HttpPost("void")]
+    public async Task<IActionResult> Void(Guid id, [FromBody] VoidRiskRequest req)
+    {
+        var risk = await _db.Risks.FindAsync(id) ?? throw new KeyNotFoundException("Risk not found");
+        if (risk.Status == "Closed")
+            return BadRequest(new { message = "Cannot void a closed risk" });
+
+        risk.Status      = "Void";
+        risk.VoidRemarks = req.Remarks;
+        risk.RejectedOn  = DateTime.UtcNow;
+        risk.UpdatedAt   = DateTime.UtcNow;
+
+        _db.RiskUpdates.Add(new RiskUpdate
+        {
+            RiskId = id, NewStatus = "Void",
+            Notes = $"Marked as Void: {req.Remarks}",
+            UpdatedById = _cu.UserId,
+        });
+        await _db.SaveChangesAsync();
+
+        // Notify risk owner
+        if (risk.RiskOwnerId.HasValue)
+            await _notif.SendAsync(risk.RiskOwnerId.Value, "Risk Voided",
+                $"Risk '{risk.Title}' has been marked as void.", "Warning", "Risk", risk.Id);
+
+        return Ok(new RiskLifecycleDto(risk.Id, risk.RiskNumber, risk.Title, risk.Status,
+            risk.VoidRemarks, risk.RaisedOn, risk.AcknowledgedOn,
+            risk.AnalysisCompletedOn, risk.ClosedOnTimestamp, risk.RejectedOn));
+    }
+
+    // Auto-stamp timestamps on status transitions (RM2-EXT-2)
+    [HttpPost("advance")]
+    public async Task<IActionResult> Advance(Guid id, [FromBody] UpdateRiskStatusRequest req)
+    {
+        var risk = await _db.Risks.FindAsync(id) ?? throw new KeyNotFoundException("Risk not found");
+        var oldStatus = risk.Status;
+        risk.Status    = req.Status;
+        risk.UpdatedAt = DateTime.UtcNow;
+
+        // Stamp lifecycle timestamps
+        switch (req.Status)
+        {
+            case "DeptReview":
+                risk.RaisedOn ??= DateTime.UtcNow;
+                break;
+            case "Analysis":
+                risk.AcknowledgedOn ??= DateTime.UtcNow;
+                break;
+            case "MitigationPlanning":
+            case "MitigationInProgress":
+                risk.AnalysisCompletedOn ??= DateTime.UtcNow;
+                break;
+            case "Closed":
+            case "Accepted":
+                risk.ClosedOnTimestamp ??= DateTime.UtcNow;
+                break;
+        }
+
+        if (!string.IsNullOrEmpty(req.Notes))
+        {
+            _db.RiskUpdates.Add(new RiskUpdate
+            {
+                RiskId = id, NewStatus = req.Status,
+                Notes = req.Notes, UpdatedById = _cu.UserId,
+            });
+        }
+        await _db.SaveChangesAsync();
+
+        return Ok(new RiskLifecycleDto(risk.Id, risk.RiskNumber, risk.Title, risk.Status,
+            risk.VoidRemarks, risk.RaisedOn, risk.AcknowledgedOn,
+            risk.AnalysisCompletedOn, risk.ClosedOnTimestamp, risk.RejectedOn));
+    }
+}
+
+// Risk Reports Controller (RM2-EXT-3)
+[ApiController, Route("api/risks/reports"), Authorize]
+public class RiskReportsController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    public RiskReportsController(AppDbContext db) => _db = db;
+
+    [HttpGet]
+    public async Task<IActionResult> GetReport([FromQuery] Guid? projectId)
+    {
+        var q = _db.Risks.Include(r => r.RiskOwner).Where(r => !r.IsDeleted);
+        if (projectId.HasValue) q = q.Where(r => r.ProjectId == projectId.Value);
+        var risks = await q.ToListAsync();
+
+        var bySeverity = new[] { "Low","Medium","High","Critical" }
+            .Select(s => new ChartDataPoint(s, risks.Count(r => r.RiskLevel == s && r.Status != "Closed" && r.Status != "Void"), null)).ToList();
+
+        var byStatus = new[] { "Draft","DeptReview","Analysis","MitigationPlanning","MitigationInProgress","Closed","Void" }
+            .Select(s => new ChartDataPoint(s, risks.Count(r => r.Status == s), null)).ToList();
+
+        var byOwner = risks
+            .Where(r => r.RiskOwner != null && r.Status != "Closed" && r.Status != "Void")
+            .GroupBy(r => r.RiskOwner!.FullName)
+            .Select(g => new ChartDataPoint(g.Key, g.Count(), null))
+            .Take(10).ToList();
+
+        return Ok(new RiskReportDto(
+            bySeverity, byStatus, byOwner,
+            risks.Count(r => r.Status != "Closed" && r.Status != "Void"),
+            risks.Count(r => r.Status == "Closed"),
+            risks.Count(r => r.Status == "Void"),
+            risks.Count(r => r.RiskLevel == "Critical" && r.Status != "Closed" && r.Status != "Void"),
+            risks.Count(r => r.RiskLevel == "High"     && r.Status != "Closed" && r.Status != "Void"),
+            risks.Count(r => r.RiskLevel == "Medium"   && r.Status != "Closed" && r.Status != "Void"),
+            risks.Count(r => r.RiskLevel == "Low"      && r.Status != "Closed" && r.Status != "Void")
+        ));
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DRAWING VERSIONS CONTROLLER (M3-6, DM-EXT-3)
+// ═══════════════════════════════════════════════════════════════
+
+[ApiController, Route("api/drawings/{drawingId:guid}/versions"), Authorize]
+public class DrawingVersionsController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    private readonly IFileStorageService _storage;
+
+    public DrawingVersionsController(AppDbContext db, ICurrentUserService cu, IFileStorageService storage)
+    { _db = db; _cu = cu; _storage = storage; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetVersions(Guid drawingId)
+    {
+        var versions = await _db.DrawingVersions
+            .Include(v => v.RevisedBy)
+            .Where(v => v.DrawingId == drawingId && !v.IsDeleted)
+            .OrderByDescending(v => v.VersionNumber)
+            .Select(v => new DrawingVersionDto(
+                v.Id, v.DrawingId, v.VersionNumber, v.Revision,
+                v.FileUrl, v.Notes, v.Status,
+                v.RevisedBy.FullName, v.CreatedAt))
+            .ToListAsync();
+        return Ok(versions);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> AddVersion(Guid drawingId,
+        [FromForm] string revision, [FromForm] string? notes, IFormFile? file)
+    {
+        var drawing = await _db.Drawings.FindAsync(drawingId)
+            ?? throw new KeyNotFoundException("Drawing not found");
+
+        // Supersede all previous versions
+        await _db.DrawingVersions
+            .Where(v => v.DrawingId == drawingId && v.Status == "Current")
+            .ExecuteUpdateAsync(s => s.SetProperty(v => v.Status, "Superseded"));
+
+        // Get next version number
+        var lastVersion = await _db.DrawingVersions
+            .Where(v => v.DrawingId == drawingId)
+            .MaxAsync(v => (int?)v.VersionNumber) ?? 0;
+
+        string? filePath = null, fileUrl = null;
+        if (file != null)
+        {
+            (filePath, fileUrl) = await _storage.SaveFileAsync(file, $"drawings/{drawingId}");
+        }
+
+        var version = new DrawingVersion
+        {
+            DrawingId     = drawingId,
+            VersionNumber = lastVersion + 1,
+            Revision      = revision,
+            FilePath      = filePath,
+            FileUrl       = fileUrl,
+            Notes         = notes,
+            Status        = "Current",
+            RevisedById   = _cu.UserId,
+        };
+        _db.DrawingVersions.Add(version);
+
+        // Update drawing revision
+        drawing.Revision  = revision;
+        drawing.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+
+        var user = await _db.Users.FindAsync(_cu.UserId);
+        return Ok(new DrawingVersionDto(version.Id, drawingId, version.VersionNumber,
+            revision, fileUrl, notes, "Current", user?.FullName ?? "", version.CreatedAt));
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CHANGE REQUEST LIFECYCLE CONTROLLER (DM-EXT-5)
+// ═══════════════════════════════════════════════════════════════
+
+[ApiController, Route("api/change-requests/{id:guid}/lifecycle"), Authorize]
+public class CrLifecycleController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    private readonly INotificationService _notif;
+
+    // CR lifecycle stages (DM-EXT-5)
+    private static readonly Dictionary<string, string[]> AllowedTransitions = new()
+    {
+        ["Draft"]                 = new[] { "UnderReview"                         },
+        ["UnderReview"]           = new[] { "EvaluateImpact", "ProjectIssueLog"   },
+        ["EvaluateImpact"]        = new[] { "PrepareChangeOrder"                  },
+        ["PrepareChangeOrder"]    = new[] { "ReviewByHOD"                         },
+        ["ReviewByHOD"]           = new[] { "UpdateProjectPlan", "ProjectIssueLog"},
+        ["UpdateProjectPlan"]     = new[] { "MakeChange"                          },
+        ["MakeChange"]            = new[] { "ChangeCompleted"                     },
+        ["ChangeCompleted"]       = Array.Empty<string>(),
+        ["ProjectIssueLog"]       = Array.Empty<string>(),
+    };
+
+    public CrLifecycleController(AppDbContext db, ICurrentUserService cu, INotificationService notif)
+    { _db = db; _cu = cu; _notif = notif; }
+
+    [HttpGet("log")]
+    public async Task<IActionResult> GetLog(Guid id)
+    {
+        var logs = await _db.ChangeRequestLogs
+            .Include(l => l.ChangedBy)
+            .Where(l => l.ChangeRequestId == id && !l.IsDeleted)
+            .OrderBy(l => l.CreatedAt)
+            .Select(l => new CrLogDto(l.Id, l.FromState, l.ToState,
+                l.Comments, l.ChangedBy.FullName, l.CreatedAt))
+            .ToListAsync();
+        return Ok(logs);
+    }
+
+    [HttpPost("advance")]
+    public async Task<IActionResult> Advance(Guid id, [FromBody] AdvanceCrRequest req)
+    {
+        var cr = await _db.ChangeRequests.FindAsync(id) ?? throw new KeyNotFoundException();
+
+        if (!AllowedTransitions.TryGetValue(cr.Status, out var allowed) ||
+            !allowed.Contains(req.ToState))
+            return BadRequest(new { message = $"Cannot transition from '{cr.Status}' to '{req.ToState}'" });
+
+        var fromState = cr.Status;
+        cr.Status     = req.ToState;
+        cr.UpdatedAt  = DateTime.UtcNow;
+        if (req.ToState == "ReviewByHOD" || req.ToState == "ChangeCompleted")
+        {
+            cr.ReviewedById = _cu.UserId;
+            cr.ReviewedAt   = DateTime.UtcNow;
+            cr.ReviewComments = req.Comments;
+        }
+
+        _db.ChangeRequestLogs.Add(new ChangeRequestLog
+        {
+            ChangeRequestId = id, FromState = fromState,
+            ToState = req.ToState, Comments = req.Comments,
+            ChangedById = _cu.UserId,
+        });
+
+        await _db.SaveChangesAsync();
+        return Ok(new { id, fromState, toState = req.ToState, status = cr.Status });
+    }
+
+    [HttpGet("allowed-transitions")]
+    public async Task<IActionResult> GetAllowed(Guid id)
+    {
+        var cr = await _db.ChangeRequests.FindAsync(id) ?? throw new KeyNotFoundException();
+        var transitions = AllowedTransitions.TryGetValue(cr.Status, out var t) ? t : Array.Empty<string>();
+        return Ok(new { currentStatus = cr.Status, allowedNext = transitions });
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INVENTORY RECONCILIATION CONTROLLER (INV-EXT-1, INV-EXT-2)
+// ═══════════════════════════════════════════════════════════════
+
+[ApiController, Route("api/inventory/reconciliation"), Authorize]
+public class ReconciliationController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+
+    public ReconciliationController(AppDbContext db, ICurrentUserService cu)
+    { _db = db; _cu = cu; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll([FromQuery] Guid? projectId)
+    {
+        var q = _db.Reconciliations
+            .Include(r => r.Officer)
+            .Include(r => r.Items)
+            .Where(r => !r.IsDeleted);
+        if (projectId.HasValue) q = q.Where(r => r.ProjectId == projectId.Value);
+        var list = await q.OrderByDescending(r => r.CreatedAt)
+            .Select(r => MapRec(r)).ToListAsync();
+        return Ok(list);
+    }
+
+    [HttpPost("initiate")]
+    public async Task<IActionResult> Initiate([FromBody] InitiateReconciliationRequest req)
+    {
+        // Check no active reconciliation
+        var active = await _db.Reconciliations.AnyAsync(r =>
+            r.ProjectId == req.ProjectId && r.Status == "InProgress" && !r.IsDeleted);
+        if (active)
+            return BadRequest(new { message = "An active reconciliation already exists for this project" });
+
+        // Get all materials for this project from stock ledger
+        var materials = await _db.StockLedger
+            .Include(s => s.Material)
+            .Where(s => s.ProjectId == req.ProjectId && !s.IsDeleted)
+            .GroupBy(s => new { s.MaterialId, s.Material.Name })
+            .Select(g => new { g.Key.MaterialId, g.Key.Name, Balance: g.Max(s => s.BalanceAfter ?? 0) })
+            .ToListAsync();
+
+        var rec = new InventoryReconciliation
+        {
+            ProjectId = req.ProjectId, Status = "InProgress",
+            OfficerId = _cu.UserId,
+            VersionNumber = await _db.Reconciliations.CountAsync(r => r.ProjectId == req.ProjectId) + 1,
+        };
+        _db.Reconciliations.Add(rec);
+
+        foreach (var m in materials)
+        {
+            _db.ReconciliationItems.Add(new ReconciliationItem
+            {
+                ReconciliationId = rec.Id, MaterialId = m.MaterialId,
+                MaterialName = m.Name, SystemStock = m.Balance,
+            });
+        }
+
+        await _db.SaveChangesAsync();
+        await _db.Entry(rec).Collection(r => r.Items).LoadAsync();
+        await _db.Entry(rec).Reference(r => r.Officer).LoadAsync();
+        return Ok(MapRec(rec));
+    }
+
+    [HttpPut("{recId:guid}/items")]
+    public async Task<IActionResult> UpdateItems(Guid recId,
+        [FromBody] List<UpdateReconciliationItemRequest> items)
+    {
+        var rec = await _db.Reconciliations.Include(r => r.Items)
+            .FirstOrDefaultAsync(r => r.Id == recId && !r.IsDeleted)
+            ?? throw new KeyNotFoundException();
+
+        foreach (var update in items)
+        {
+            var item = rec.Items.FirstOrDefault(i => i.MaterialId == update.MaterialId);
+            if (item != null)
+            {
+                item.PhysicalStock = update.PhysicalStock;
+                item.Variance      = item.SystemStock - update.PhysicalStock;
+            }
+        }
+        await _db.SaveChangesAsync();
+        return Ok(MapRec(rec));
+    }
+
+    [HttpPost("{recId:guid}/complete")]
+    public async Task<IActionResult> Complete(Guid recId, [FromQuery] bool correctStock = false)
+    {
+        var rec = await _db.Reconciliations.Include(r => r.Items)
+            .FirstOrDefaultAsync(r => r.Id == recId && !r.IsDeleted)
+            ?? throw new KeyNotFoundException();
+
+        if (correctStock)
+        {
+            // Update system stock to match physical count
+            foreach (var item in rec.Items.Where(i => i.PhysicalStock.HasValue))
+            {
+                var material = await _db.Materials.FindAsync(item.MaterialId);
+                if (material != null)
+                {
+                    material.CurrentStock = item.PhysicalStock!.Value;
+                    material.UpdatedAt    = DateTime.UtcNow;
+                }
+            }
+        }
+
+        rec.Status      = correctStock ? "CompletedWithCorrection" : "Completed";
+        rec.CompletedAt = DateTime.UtcNow;
+        rec.UpdatedAt   = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await _db.Entry(rec).Reference(r => r.Officer).LoadAsync();
+        return Ok(MapRec(rec));
+    }
+
+    private static ReconciliationDto MapRec(InventoryReconciliation r) => new(
+        r.Id, r.ProjectId, r.Status, r.VersionNumber,
+        r.CreatedAt, r.CompletedAt, r.Officer?.FullName,
+        r.Items.Select(i => new ReconciliationItemDto(
+            i.Id, i.MaterialId, i.MaterialName,
+            i.SystemStock, i.PhysicalStock, i.Variance)).ToList());
+}
+
+public record InitiateReconciliationRequest(Guid ProjectId);
+
+// ═══════════════════════════════════════════════════════════════
+// PROCUREMENT QUOTATIONS CONTROLLER (M4-3 to M4-6)
+// ═══════════════════════════════════════════════════════════════
+
+[ApiController, Route("api/quotations"), Authorize]
+public class QuotationsController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+
+    public QuotationsController(AppDbContext db, ICurrentUserService cu)
+    { _db = db; _cu = cu; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll([FromQuery] Guid? mrId)
+    {
+        var q = _db.Quotations.Include(q => q.Vendor)
+            .Include(q => q.MaterialRequest)
+            .Where(q => !q.IsDeleted);
+        if (mrId.HasValue) q = q.Where(q => q.MaterialRequestId == mrId.Value);
+        var list = await q.OrderBy(q => q.UnitPrice)
+            .Select(q => MapQuote(q)).ToListAsync();
+        return Ok(list);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateQuotationRequest req)
+    {
+        var existing = await _db.Quotations.AnyAsync(q =>
+            q.MaterialRequestId == req.MaterialRequestId &&
+            q.VendorId == req.VendorId && !q.IsDeleted);
+        if (existing)
+            return BadRequest(new { message = "Quotation from this vendor already exists" });
+
+        var quote = new Quotation
+        {
+            MaterialRequestId = req.MaterialRequestId,
+            VendorId          = req.VendorId,
+            UnitPrice         = req.UnitPrice,
+            LeadTimeDays      = req.LeadTimeDays,
+            ValidityDate      = req.ValidityDate != null ? DateTime.Parse(req.ValidityDate) : null,
+            PaymentTerms      = req.PaymentTerms,
+        };
+        _db.Quotations.Add(quote);
+
+        // Mark lowest price as recommended
+        var allQuotes = await _db.Quotations
+            .Where(q => q.MaterialRequestId == req.MaterialRequestId && !q.IsDeleted).ToListAsync();
+        if (!allQuotes.Any() || req.UnitPrice <= allQuotes.Min(q => q.UnitPrice))
+        {
+            await _db.Quotations.Where(q => q.MaterialRequestId == req.MaterialRequestId)
+                .ExecuteUpdateAsync(s => s.SetProperty(q => q.IsRecommended, false));
+            quote.IsRecommended = true;
+        }
+
+        await _db.SaveChangesAsync();
+
+        // Update MR status to QuotationReceived
+        var mr = await _db.MaterialRequests.FindAsync(req.MaterialRequestId);
+        if (mr != null && mr.Status == "SentToPurchase")
+        {
+            mr.Status = "QuotationReceived";
+            await _db.SaveChangesAsync();
+        }
+
+        await _db.Entry(quote).Reference(q => q.Vendor).LoadAsync();
+        await _db.Entry(quote).Reference(q => q.MaterialRequest).LoadAsync();
+        return Ok(MapQuote(quote));
+    }
+
+    [HttpPost("{id:guid}/select")]
+    public async Task<IActionResult> SelectVendor(Guid id, [FromBody] SelectVendorRequest req)
+    {
+        var quote = await _db.Quotations
+            .Include(q => q.MaterialRequest)
+            .FirstOrDefaultAsync(q => q.Id == id && !q.IsDeleted)
+            ?? throw new KeyNotFoundException();
+
+        // Deselect all other quotes for this MR
+        await _db.Quotations
+            .Where(q => q.MaterialRequestId == quote.MaterialRequestId)
+            .ExecuteUpdateAsync(s => s.SetProperty(q => q.IsSelected, false));
+
+        quote.IsSelected               = true;
+        quote.SelectionJustification   = req.Justification;
+        quote.UpdatedAt                = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await _db.Entry(quote).Reference(q => q.Vendor).LoadAsync();
+        await _db.Entry(quote).Reference(q => q.MaterialRequest).LoadAsync();
+        return Ok(MapQuote(quote));
+    }
+
+    [HttpGet("compare/{mrId:guid}")]
+    public async Task<IActionResult> Compare(Guid mrId)
+    {
+        var quotes = await _db.Quotations.Include(q => q.Vendor)
+            .Where(q => q.MaterialRequestId == mrId && !q.IsDeleted)
+            .OrderBy(q => q.UnitPrice).ToListAsync();
+        return Ok(quotes.Select(q => MapQuote(q)).ToList());
+    }
+
+    private static QuotationDto MapQuote(Quotation q) => new(
+        q.Id, q.MaterialRequestId,
+        q.MaterialRequest?.MrNumber ?? "",
+        q.VendorId, q.Vendor?.Name ?? "",
+        q.UnitPrice, q.LeadTimeDays, q.ValidityDate,
+        q.PaymentTerms, q.AttachmentPath,
+        q.IsRecommended, q.IsSelected,
+        q.SelectionJustification, q.TechnicalScore);
+}
+
+[ApiController, Route("api/negotiations"), Authorize]
+public class NegotiationsController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+
+    public NegotiationsController(AppDbContext db, ICurrentUserService cu)
+    { _db = db; _cu = cu; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll([FromQuery] Guid? mrId)
+    {
+        var q = _db.NegotiationLogs.Include(n => n.Vendor).Include(n => n.LoggedBy)
+            .Where(n => !n.IsDeleted);
+        if (mrId.HasValue) q = q.Where(n => n.MaterialRequestId == mrId.Value);
+        var list = await q.OrderByDescending(n => n.CreatedAt)
+            .Select(n => new NegotiationDto(n.Id, n.MaterialRequestId,
+                n.Vendor.Name, n.Round, n.NegotiatedPrice, n.InitialPrice,
+                n.InitialPrice.HasValue ? n.InitialPrice.Value - n.NegotiatedPrice : null,
+                n.Notes, n.LoggedBy.FullName, n.CreatedAt))
+            .ToListAsync();
+        return Ok(list);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateNegotiationRequest req)
+    {
+        var round = await _db.NegotiationLogs
+            .CountAsync(n => n.MaterialRequestId == req.MaterialRequestId && n.VendorId == req.VendorId) + 1;
+
+        var neg = new NegotiationLog
+        {
+            MaterialRequestId = req.MaterialRequestId, VendorId = req.VendorId,
+            Round = round, NegotiatedPrice = req.NegotiatedPrice,
+            InitialPrice = req.InitialPrice, Notes = req.Notes,
+            LoggedById = _cu.UserId,
+        };
+        _db.NegotiationLogs.Add(neg);
+        await _db.SaveChangesAsync();
+
+        await _db.Entry(neg).Reference(n => n.Vendor).LoadAsync();
+        await _db.Entry(neg).Reference(n => n.LoggedBy).LoadAsync();
+        return Ok(new NegotiationDto(neg.Id, neg.MaterialRequestId,
+            neg.Vendor.Name, neg.Round, neg.NegotiatedPrice, neg.InitialPrice,
+            neg.InitialPrice.HasValue ? neg.InitialPrice.Value - neg.NegotiatedPrice : null,
+            neg.Notes, neg.LoggedBy.FullName, neg.CreatedAt));
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUDGET STATE LIFECYCLE CONTROLLER (BM-EXT-1)
+// ═══════════════════════════════════════════════════════════════
+
+[ApiController, Route("api/budget/{budgetId:guid}/state"), Authorize]
+public class BudgetStateController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+
+    public BudgetStateController(AppDbContext db, ICurrentUserService cu)
+    { _db = db; _cu = cu; }
+
+    [HttpPost]
+    public async Task<IActionResult> ChangeState(Guid budgetId, [FromBody] BudgetStateRequest req)
+    {
+        var budget = await _db.ProjectBudgets.FindAsync(budgetId)
+            ?? throw new KeyNotFoundException("Budget not found");
+
+        var validTransitions = new Dictionary<string, string[]>
+        {
+            ["Draft"]    = new[] { "Active" },
+            ["Active"]   = new[] { "Inactive", "Revised" },
+            ["Inactive"] = new[] { "Active" },
+            ["Revised"]  = new[] { "Active", "Inactive" },
+        };
+
+        if (!validTransitions.TryGetValue(budget.Status, out var allowed) ||
+            !allowed.Contains(req.NewState))
+            return BadRequest(new { message = $"Cannot change budget from '{budget.Status}' to '{req.NewState}'" });
+
+        budget.Status    = req.NewState;
+        budget.UpdatedAt = DateTime.UtcNow;
+        if (req.NewState == "Active")
+        {
+            budget.ApprovedAt   = DateTime.UtcNow;
+            budget.ApprovedById = _cu.UserId;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { id = budgetId, status = budget.Status, updatedAt = budget.UpdatedAt });
+    }
+}

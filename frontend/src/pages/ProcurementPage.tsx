@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { ShoppingCart, Plus, ChevronRight, Loader2, X, ArrowRight } from 'lucide-react';
-import { procurementApi, projectsApi } from '../lib/api';
+import { procurementApi, projectsApi, api } from '../lib/api';
 import { format } from 'date-fns';
 import clsx from 'clsx';
 
@@ -31,7 +31,7 @@ const getNextAction = (status: string): string => {
 
 
 export default function ProcurementPage() {
-  const [subTab, setSubTab] = useState<'mr' | 'po'>('mr');
+  const [subTab, setSubTab] = useState<'mr' | 'po' | 'quotes' | 'negotiate'>('mr');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedMR, setSelectedMR] = useState<any>(null);
   const qc = useQueryClient();
@@ -45,6 +45,53 @@ export default function ProcurementPage() {
     queryKey: ['material-requests', subTab],
     queryFn:  () => procurementApi.getMRs().then(r => r.data),
     enabled:  subTab === 'mr',
+  });
+
+  const { data: vendors } = useQuery({
+    queryKey: ['vendors'],
+    queryFn: () => api.get('/procurement/vendors').then(r => r.data),
+  });
+
+  const { data: quotes } = useQuery({
+    queryKey: ['quotes', selectedMRForQuotes],
+    queryFn: () => api.get('/quotations', { params: { mrId: selectedMRForQuotes } }).then(r => r.data),
+    enabled: subTab === 'quotes' && !!selectedMRForQuotes,
+  });
+
+  const { data: negotiations } = useQuery({
+    queryKey: ['negotiations', selectedMRForQuotes],
+    queryFn: () => api.get('/negotiations', { params: { mrId: selectedMRForQuotes } }).then(r => r.data),
+    enabled: subTab === 'negotiate' && !!selectedMRForQuotes,
+  });
+
+  const addQuoteMutation = useMutation({
+    mutationFn: () => api.post('/quotations', {
+      materialRequestId: selectedMRForQuotes,
+      vendorId: newQuote.vendorId,
+      unitPrice: Number(newQuote.unitPrice),
+      leadTimeDays: newQuote.leadDays ? Number(newQuote.leadDays) : undefined,
+      paymentTerms: newQuote.paymentTerms || undefined,
+    }),
+    onSuccess: () => { toast.success('Quotation added'); qc.invalidateQueries({ queryKey:['quotes'] }); setNewQuote({vendorId:'',unitPrice:'',leadDays:'',paymentTerms:''}); },
+    onError: (e:any) => toast.error(e.response?.data?.message || 'Failed'),
+  });
+
+  const selectVendorMutation = useMutation({
+    mutationFn: ({ quoteId, justification }: { quoteId:string; justification?:string }) =>
+      api.post(\`/quotations/\${quoteId}/select\`, { justification }),
+    onSuccess: () => { toast.success('Vendor selected'); qc.invalidateQueries({ queryKey:['quotes'] }); },
+  });
+
+  const addNegMutation = useMutation({
+    mutationFn: () => api.post('/negotiations', {
+      materialRequestId: newNeg.mrId || selectedMRForQuotes,
+      vendorId: newNeg.vendorId,
+      negotiatedPrice: Number(newNeg.price),
+      initialPrice: newNeg.initial ? Number(newNeg.initial) : undefined,
+      notes: newNeg.notes || undefined,
+    }),
+    onSuccess: () => { toast.success('Negotiation round logged'); qc.invalidateQueries({ queryKey:['negotiations'] }); setNewNeg({mrId:'',vendorId:'',price:'',initial:'',notes:''}); },
+    onError: (e:any) => toast.error(e.response?.data?.message || 'Failed'),
   });
 
   const { data: pos, isLoading: posLoading } = useQuery({
@@ -176,6 +223,215 @@ export default function ProcurementPage() {
               }
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Quotation Comparison Tab */}
+      {subTab === 'quotes' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <select className="select flex-1 max-w-xs"
+              value={selectedMRForQuotes} onChange={e => setMRForQuotes(e.target.value)}>
+              <option value="">Select an MR to view/add quotations...</option>
+              {(mrs || []).map((mr: any) => (
+                <option key={mr.id} value={mr.id}>{mr.mrNumber} — {mr.title || 'MR'}</option>
+              ))}
+            </select>
+          </div>
+
+          {selectedMRForQuotes && (
+            <>
+              {/* Add quotation form */}
+              <div className="card p-4">
+                <p className="text-sm font-semibold text-gray-700 mb-3">Add Vendor Quotation</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500">Vendor *</label>
+                    <select className="select w-full mt-1 text-sm"
+                      value={newQuote.vendorId} onChange={e => setNewQuote(q => ({...q, vendorId: e.target.value}))}>
+                      <option value="">Select vendor...</option>
+                      {((vendors as any[]) || []).map((v: any) => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Unit Price (USD) *</label>
+                    <input type="number" className="input w-full mt-1 text-sm"
+                      placeholder="0.00" min="0" value={newQuote.unitPrice}
+                      onChange={e => setNewQuote(q => ({...q, unitPrice: e.target.value}))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Lead Time (days)</label>
+                    <input type="number" className="input w-full mt-1 text-sm"
+                      placeholder="0" min="0" value={newQuote.leadDays}
+                      onChange={e => setNewQuote(q => ({...q, leadDays: e.target.value}))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Payment Terms</label>
+                    <input className="input w-full mt-1 text-sm"
+                      placeholder="e.g. Net 30" value={newQuote.paymentTerms}
+                      onChange={e => setNewQuote(q => ({...q, paymentTerms: e.target.value}))} />
+                  </div>
+                </div>
+                <button className="btn-primary text-sm mt-3"
+                  disabled={!newQuote.vendorId || !newQuote.unitPrice || addQuoteMutation.isPending}
+                  onClick={() => addQuoteMutation.mutate()}>
+                  {addQuoteMutation.isPending ? 'Adding...' : 'Add Quotation'}
+                </button>
+              </div>
+
+              {/* Comparison table */}
+              {(quotes as any[] || []).length === 0 ? (
+                <div className="card p-8 text-center text-gray-400">
+                  No quotations yet for this MR. Add vendor quotes above.
+                </div>
+              ) : (
+                <div className="card overflow-hidden p-0">
+                  <div className="card-header">
+                    <span className="font-medium text-sm">Vendor Comparison</span>
+                    <span className="text-xs text-gray-400">⭐ = Recommended (lowest price)</span>
+                  </div>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Vendor</th>
+                        <th className="text-right">Unit Price</th>
+                        <th className="text-center">Lead Time</th>
+                        <th>Payment Terms</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(quotes as any[]).sort((a: any, b: any) => a.unitPrice - b.unitPrice).map((q: any) => (
+                        <tr key={q.id} className={q.isSelected ? 'bg-green-50' : q.isRecommended ? 'bg-yellow-50' : ''}>
+                          <td className="font-medium">
+                            {q.isRecommended && <span className="text-yellow-500 mr-1">⭐</span>}
+                            {q.vendorName}
+                          </td>
+                          <td className="text-right font-bold text-gray-800">
+                            ${q.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="text-center text-sm">{q.leadTimeDays ? `${q.leadTimeDays}d` : '—'}</td>
+                          <td className="text-sm text-gray-600">{q.paymentTerms || '—'}</td>
+                          <td>
+                            {q.isSelected
+                              ? <span className="badge badge-green text-xs">✓ Selected</span>
+                              : q.isRecommended
+                              ? <span className="badge badge-yellow text-xs">Recommended</span>
+                              : <span className="badge badge-gray text-xs">Pending</span>
+                            }
+                          </td>
+                          <td>
+                            {!q.isSelected && (
+                              <button
+                                onClick={() => {
+                                  const j = prompt('Justification for selecting this vendor (optional):') ?? '';
+                                  selectVendorMutation.mutate({ quoteId: q.id, justification: j });
+                                }}
+                                className="btn-primary btn-sm text-xs">
+                                Select
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Negotiations Tab */}
+      {subTab === 'negotiate' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <select className="select flex-1 max-w-xs"
+              value={selectedMRForQuotes} onChange={e => setMRForQuotes(e.target.value)}>
+              <option value="">Select an MR...</option>
+              {(mrs || []).map((mr: any) => (
+                <option key={mr.id} value={mr.id}>{mr.mrNumber}</option>
+              ))}
+            </select>
+          </div>
+
+          {selectedMRForQuotes && (
+            <>
+              <div className="card p-4">
+                <p className="text-sm font-semibold text-gray-700 mb-3">Log Negotiation Round</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500">Vendor *</label>
+                    <select className="select w-full mt-1 text-sm"
+                      value={newNeg.vendorId} onChange={e => setNewNeg(n => ({...n, vendorId: e.target.value}))}>
+                      <option value="">Select vendor...</option>
+                      {((vendors as any[]) || []).map((v: any) => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Initial Quote Price</label>
+                    <input type="number" className="input w-full mt-1 text-sm"
+                      placeholder="Original price" value={newNeg.initial}
+                      onChange={e => setNewNeg(n => ({...n, initial: e.target.value}))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Negotiated Price *</label>
+                    <input type="number" className="input w-full mt-1 text-sm"
+                      placeholder="After negotiation" value={newNeg.price}
+                      onChange={e => setNewNeg(n => ({...n, price: e.target.value}))} />
+                  </div>
+                  <div className="col-span-2 md:col-span-3">
+                    <label className="text-xs text-gray-500">Notes</label>
+                    <input className="input w-full mt-1 text-sm"
+                      placeholder="Terms agreed, conditions..." value={newNeg.notes}
+                      onChange={e => setNewNeg(n => ({...n, notes: e.target.value}))} />
+                  </div>
+                </div>
+                <button className="btn-primary text-sm mt-3"
+                  disabled={!newNeg.vendorId || !newNeg.price || addNegMutation.isPending}
+                  onClick={() => addNegMutation.mutate()}>
+                  {addNegMutation.isPending ? 'Logging...' : 'Log Negotiation'}
+                </button>
+              </div>
+
+              {(negotiations as any[] || []).length === 0 ? (
+                <div className="card p-8 text-center text-gray-400">No negotiations logged yet</div>
+              ) : (
+                <div className="card overflow-hidden p-0">
+                  <table className="table">
+                    <thead>
+                      <tr><th>Vendor</th><th>Round</th><th>Initial Price</th><th>Negotiated</th><th>Saving</th><th>Notes</th><th>Logged By</th></tr>
+                    </thead>
+                    <tbody>
+                      {(negotiations as any[]).map((n: any) => (
+                        <tr key={n.id}>
+                          <td className="font-medium">{n.vendorName}</td>
+                          <td className="text-center"><span className="badge badge-blue text-xs">Round {n.round}</span></td>
+                          <td className="text-sm">{n.initialPrice ? `$${n.initialPrice.toLocaleString()}` : '—'}</td>
+                          <td className="font-medium text-blue-600">${n.negotiatedPrice.toLocaleString()}</td>
+                          <td>
+                            {n.saving != null && (
+                              <span className={n.saving > 0 ? 'text-green-600 font-medium' : 'text-red-500'}>
+                                {n.saving > 0 ? '-' : '+'} ${Math.abs(n.saving).toLocaleString()}
+                              </span>
+                            )}
+                          </td>
+                          <td className="text-sm text-gray-500 max-w-xs truncate">{n.notes || '—'}</td>
+                          <td className="text-xs text-gray-400">{n.loggedByName}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 

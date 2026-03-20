@@ -107,3 +107,151 @@ GO
 
 PRINT '=== Patch v3 complete ===';
 GO
+
+-- DrawingVersions
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='DrawingVersions' AND SCHEMA_NAME(schema_id)='Document')
+BEGIN
+    CREATE TABLE Document.DrawingVersions (
+        Id            UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        DrawingId     UNIQUEIDENTIFIER NOT NULL REFERENCES Document.Drawings(Id),
+        VersionNumber INT              NOT NULL DEFAULT 1,
+        Revision      NVARCHAR(20)     NOT NULL,
+        FilePath      NVARCHAR(1000)   NULL,
+        FileUrl       NVARCHAR(500)    NULL,
+        Notes         NVARCHAR(500)    NULL,
+        Status        NVARCHAR(50)     NOT NULL DEFAULT 'Current',
+        RevisedById   UNIQUEIDENTIFIER NOT NULL REFERENCES Auth.Users(Id),
+        CreatedAt     DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt     DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedById   UNIQUEIDENTIFIER NULL,
+        UpdatedById   UNIQUEIDENTIFIER NULL,
+        IsDeleted     BIT              NOT NULL DEFAULT 0,
+        DeletedAt     DATETIME2        NULL
+    );
+    PRINT 'Created Document.DrawingVersions';
+END
+GO
+
+-- ChangeRequestLogs
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='ChangeRequestLogs' AND SCHEMA_NAME(schema_id)='Document')
+BEGIN
+    CREATE TABLE Document.ChangeRequestLogs (
+        Id              UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        ChangeRequestId UNIQUEIDENTIFIER NOT NULL REFERENCES Document.ChangeRequests(Id),
+        FromState       NVARCHAR(50)     NOT NULL,
+        ToState         NVARCHAR(50)     NOT NULL,
+        Comments        NVARCHAR(2000)   NULL,
+        ChangedById     UNIQUEIDENTIFIER NOT NULL REFERENCES Auth.Users(Id),
+        CreatedAt       DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt       DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedById     UNIQUEIDENTIFIER NULL,
+        UpdatedById     UNIQUEIDENTIFIER NULL,
+        IsDeleted       BIT              NOT NULL DEFAULT 0,
+        DeletedAt       DATETIME2        NULL
+    );
+    PRINT 'Created Document.ChangeRequestLogs';
+END
+GO
+
+-- Inventory Reconciliation
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Reconciliations' AND SCHEMA_NAME(schema_id)='Inventory')
+BEGIN
+    CREATE TABLE Inventory.Reconciliations (
+        Id            UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        ProjectId     UNIQUEIDENTIFIER NOT NULL REFERENCES Project.Projects(Id),
+        Status        NVARCHAR(50)     NOT NULL DEFAULT 'InProgress',
+        VersionNumber INT              NOT NULL DEFAULT 1,
+        CompletedAt   DATETIME2        NULL,
+        OfficerId     UNIQUEIDENTIFIER NULL REFERENCES Auth.Users(Id),
+        PdfPath       NVARCHAR(1000)   NULL,
+        CreatedAt     DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt     DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedById   UNIQUEIDENTIFIER NULL,
+        UpdatedById   UNIQUEIDENTIFIER NULL,
+        IsDeleted     BIT              NOT NULL DEFAULT 0,
+        DeletedAt     DATETIME2        NULL
+    );
+    CREATE TABLE Inventory.ReconciliationItems (
+        Id                 UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        ReconciliationId   UNIQUEIDENTIFIER NOT NULL REFERENCES Inventory.Reconciliations(Id),
+        MaterialId         UNIQUEIDENTIFIER NOT NULL REFERENCES Inventory.Materials(Id),
+        MaterialName       NVARCHAR(300)    NOT NULL,
+        SystemStock        DECIMAL(10,3)    NOT NULL DEFAULT 0,
+        PhysicalStock      DECIMAL(10,3)    NULL,
+        Variance           DECIMAL(10,3)    NULL,
+        CreatedAt          DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt          DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedById        UNIQUEIDENTIFIER NULL,
+        UpdatedById        UNIQUEIDENTIFIER NULL,
+        IsDeleted          BIT              NOT NULL DEFAULT 0,
+        DeletedAt          DATETIME2        NULL
+    );
+    PRINT 'Created Inventory.Reconciliations + ReconciliationItems';
+END
+GO
+
+-- Quotations
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Quotations' AND SCHEMA_NAME(schema_id)='Procurement')
+BEGIN
+    CREATE TABLE Procurement.Quotations (
+        Id                    UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        MaterialRequestId     UNIQUEIDENTIFIER NOT NULL REFERENCES Procurement.MaterialRequests(Id),
+        VendorId              UNIQUEIDENTIFIER NOT NULL REFERENCES Procurement.Vendors(Id),
+        UnitPrice             DECIMAL(18,2)    NOT NULL,
+        LeadTimeDays          INT              NULL,
+        ValidityDate          DATETIME2        NULL,
+        PaymentTerms          NVARCHAR(500)    NULL,
+        AttachmentPath        NVARCHAR(1000)   NULL,
+        IsRecommended         BIT              NOT NULL DEFAULT 0,
+        IsSelected            BIT              NOT NULL DEFAULT 0,
+        SelectionJustification NVARCHAR(1000)  NULL,
+        TechnicalScore        DECIMAL(5,2)     NULL,
+        CreatedAt             DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt             DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedById           UNIQUEIDENTIFIER NULL,
+        UpdatedById           UNIQUEIDENTIFIER NULL,
+        IsDeleted             BIT              NOT NULL DEFAULT 0,
+        DeletedAt             DATETIME2        NULL
+    );
+    PRINT 'Created Procurement.Quotations';
+END
+GO
+
+-- NegotiationLogs
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='NegotiationLogs' AND SCHEMA_NAME(schema_id)='Procurement')
+BEGIN
+    CREATE TABLE Procurement.NegotiationLogs (
+        Id                UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+        MaterialRequestId UNIQUEIDENTIFIER NOT NULL REFERENCES Procurement.MaterialRequests(Id),
+        VendorId          UNIQUEIDENTIFIER NOT NULL REFERENCES Procurement.Vendors(Id),
+        Round             INT              NOT NULL DEFAULT 1,
+        NegotiatedPrice   DECIMAL(18,2)    NOT NULL,
+        InitialPrice      DECIMAL(18,2)    NULL,
+        Notes             NVARCHAR(1000)   NULL,
+        LoggedById        UNIQUEIDENTIFIER NOT NULL REFERENCES Auth.Users(Id),
+        CreatedAt         DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt         DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedById       UNIQUEIDENTIFIER NULL,
+        UpdatedById       UNIQUEIDENTIFIER NULL,
+        IsDeleted         BIT              NOT NULL DEFAULT 0,
+        DeletedAt         DATETIME2        NULL
+    );
+    PRINT 'Created Procurement.NegotiationLogs';
+END
+GO
+
+-- Risk lifecycle timestamp columns
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('Risk.Risks') AND name='RaisedOn')
+BEGIN
+    ALTER TABLE Risk.Risks ADD RaisedOn            DATETIME2 NULL;
+    ALTER TABLE Risk.Risks ADD AcknowledgedOn      DATETIME2 NULL;
+    ALTER TABLE Risk.Risks ADD AnalysisCompletedOn DATETIME2 NULL;
+    ALTER TABLE Risk.Risks ADD ClosedOnTimestamp   DATETIME2 NULL;
+    ALTER TABLE Risk.Risks ADD RejectedOn          DATETIME2 NULL;
+    ALTER TABLE Risk.Risks ADD VoidRemarks         NVARCHAR(1000) NULL;
+    PRINT 'Risk lifecycle timestamps added';
+END
+GO
+
+PRINT '=== Patch v4 complete ===';
+GO

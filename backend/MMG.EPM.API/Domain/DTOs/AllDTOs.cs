@@ -417,3 +417,97 @@ public record UpdateDprRequest(
     string? SafetyObservations);
 
 public record ApproveDprRequest(bool Approve, string? Reason);
+
+// ─── Risk Lifecycle (RM2-EXT-1, RM2-EXT-2) ────────────────────
+public record RiskLifecycleDto(
+    Guid Id, string RiskNumber, string Title, string Status,
+    string? VoidRemarks,
+    DateTime? RaisedOn, DateTime? AcknowledgedOn,
+    DateTime? AnalysisCompletedOn, DateTime? ClosedOnTimestamp,
+    DateTime? RejectedOn);
+
+public record VoidRiskRequest(string Remarks);
+
+public record RiskReportDto(
+    List<ChartDataPoint> BySeverity,
+    List<ChartDataPoint> ByStatus,
+    List<ChartDataPoint> ByOwner,
+    int TotalOpen, int TotalClosed, int TotalVoid,
+    int Critical, int High, int Medium, int Low);
+
+// ─── Drawing Versions (M3-6, DM-EXT-3) ────────────────────────
+public record DrawingVersionDto(
+    Guid Id, Guid DrawingId, int VersionNumber,
+    string Revision, string? FileUrl,
+    string? Notes, string Status,
+    string RevisedByName, DateTime CreatedAt);
+
+public record CreateDrawingVersionRequest(
+    string Revision, string? Notes, IFormFile? File);
+
+// ─── Change Request Lifecycle (DM-EXT-5) ──────────────────────
+public record CrLogDto(
+    Guid Id, string FromState, string ToState,
+    string? Comments, string ChangedByName, DateTime ChangedAt);
+
+public record AdvanceCrRequest(string ToState, string? Comments);
+
+// ─── Inventory Reconciliation (INV-EXT-1, INV-EXT-2) ──────────
+public record ReconciliationDto(
+    Guid Id, Guid ProjectId, string Status,
+    int VersionNumber, DateTime CreatedAt,
+    DateTime? CompletedAt, string? OfficerName,
+    List<ReconciliationItemDto> Items);
+
+public record ReconciliationItemDto(
+    Guid Id, Guid MaterialId, string MaterialName,
+    decimal SystemStock, decimal? PhysicalStock,
+    decimal? Variance);
+
+public record UpdateReconciliationItemRequest(
+    Guid MaterialId, decimal PhysicalStock);
+
+// ─── Quotations / RFQ (M4-3 to M4-6) ──────────────────────────
+public record QuotationDto(
+    Guid Id, Guid MaterialRequestId, string MrNumber,
+    Guid VendorId, string VendorName,
+    decimal UnitPrice, int? LeadTimeDays,
+    DateTime? ValidityDate, string? PaymentTerms,
+    string? AttachmentPath, bool IsRecommended,
+    bool IsSelected, string? SelectionJustification,
+    decimal? TechnicalScore);
+
+public record CreateQuotationRequest(
+    Guid MaterialRequestId, Guid VendorId,
+    decimal UnitPrice, int? LeadTimeDays,
+    string? ValidityDate, string? PaymentTerms);
+
+public record SelectVendorRequest(
+    Guid QuotationId, string? Justification);
+
+public record NegotiationDto(
+    Guid Id, Guid MaterialRequestId, string VendorName,
+    int Round, decimal NegotiatedPrice, decimal? InitialPrice,
+    decimal? Saving, string? Notes, string LoggedByName,
+    DateTime CreatedAt);
+
+public record CreateNegotiationRequest(
+    Guid MaterialRequestId, Guid VendorId,
+    decimal NegotiatedPrice, decimal? InitialPrice, string? Notes);
+
+// ─── Budget State Lifecycle (BM-EXT-1) ────────────────────────
+public record BudgetStateRequest(string NewState, string? Notes);
+
+// ─── Budget Line Items (BM-EXT-2) ─────────────────────────────
+public record BudgetLineItemDto(
+    Guid Id, Guid ProjectBudgetId, string? WbsCode,
+    string Category, string? SubCategory, string? Area,
+    string? Detail, decimal BudgetedAmount,
+    decimal CommittedAmount, decimal ExpendedAmount,
+    decimal BalanceByCommitted, decimal BalanceByPayment,
+    string State);
+
+public record CreateBudgetLineItemRequest(
+    Guid ProjectBudgetId, string? WbsCode,
+    string Category, string? SubCategory,
+    string? Area, string? Detail, decimal BudgetedAmount);

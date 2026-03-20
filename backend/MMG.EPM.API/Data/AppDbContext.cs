@@ -46,6 +46,8 @@ public class AppDbContext : DbContext
 
     // ── Procurement ───────────────────────────────────
     public DbSet<Vendor>           Vendors           => Set<Vendor>();
+    public DbSet<Quotation>        Quotations        => Set<Quotation>();
+    public DbSet<NegotiationLog>   NegotiationLogs   => Set<NegotiationLog>();
     public DbSet<MaterialRequest>  MaterialRequests  => Set<MaterialRequest>();
     public DbSet<MRLineItem>       MRLineItems       => Set<MRLineItem>();
     public DbSet<PurchaseOrder>    PurchaseOrders    => Set<PurchaseOrder>();
@@ -73,6 +75,10 @@ public class AppDbContext : DbContext
 
     // ── Risk ──────────────────────────────────────────
     public DbSet<Risk>             Risks             => Set<Risk>();
+    public DbSet<DrawingVersion>         DrawingVersions       => Set<DrawingVersion>();
+    public DbSet<ChangeRequestLog>       ChangeRequestLogs     => Set<ChangeRequestLog>();
+    public DbSet<InventoryReconciliation> Reconciliations      => Set<InventoryReconciliation>();
+    public DbSet<ReconciliationItem>     ReconciliationItems   => Set<ReconciliationItem>();
     public DbSet<RiskStakeholder>  RiskStakeholders  => Set<RiskStakeholder>();
     public DbSet<RiskUpdate>       RiskUpdates       => Set<RiskUpdate>();
     public DbSet<TaskDelay>        TaskDelays         => Set<TaskDelay>();
@@ -142,6 +148,12 @@ public class AppDbContext : DbContext
         mb.Entity<Expenditure>().ToTable("Expenditures", "Budget");
 
         mb.Entity<Risk>().ToTable("Risks", "Risk");
+        mb.Entity<DrawingVersion>().ToTable("DrawingVersions", "Document");
+        mb.Entity<ChangeRequestLog>().ToTable("ChangeRequestLogs", "Document");
+        mb.Entity<InventoryReconciliation>().ToTable("Reconciliations", "Inventory");
+        mb.Entity<ReconciliationItem>().ToTable("ReconciliationItems", "Inventory");
+        mb.Entity<Quotation>().ToTable("Quotations", "Procurement");
+        mb.Entity<NegotiationLog>().ToTable("NegotiationLogs", "Procurement");
         mb.Entity<TaskDelay>().ToTable("TaskDelays", "Project");
         mb.Entity<TaskDependency>().ToTable("TaskDependencies", "Project");
         mb.Entity<TaskDependency>()

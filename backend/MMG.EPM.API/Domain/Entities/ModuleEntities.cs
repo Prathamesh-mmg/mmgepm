@@ -92,6 +92,66 @@ public class ChangeRequest : BaseEntity
     [ForeignKey(nameof(ReviewedById))]  public User? ReviewedBy { get; set; }
 }
 
+// ─── Drawing Versions (M3-6, DM-EXT-3) ────────────────────────
+
+public class DrawingVersion : BaseEntity
+{
+    public Guid DrawingId    { get; set; }
+    public int  VersionNumber { get; set; } = 1;
+    [Required, MaxLength(20)]  public string Revision    { get; set; } = "A";
+    [MaxLength(1000)] public string? FilePath    { get; set; }
+    [MaxLength(500)]  public string? FileUrl     { get; set; }
+    [MaxLength(500)]  public string? Notes       { get; set; }
+    [MaxLength(50)]   public string Status       { get; set; } = "Current"; // Current | Superseded
+    public Guid RevisedById { get; set; }
+
+    public Drawing Drawing  { get; set; } = null!;
+    [ForeignKey(nameof(RevisedById))] public User RevisedBy { get; set; } = null!;
+}
+
+// ─── CR Status Log (DM-EXT-5) ──────────────────────────────────
+
+public class ChangeRequestLog : BaseEntity
+{
+    public Guid ChangeRequestId  { get; set; }
+    [Required, MaxLength(50)] public string FromState   { get; set; } = "";
+    [Required, MaxLength(50)] public string ToState     { get; set; } = "";
+    [MaxLength(2000)] public string? Comments  { get; set; }
+    public Guid ChangedById  { get; set; }
+
+    public ChangeRequest ChangeRequest { get; set; } = null!;
+    [ForeignKey(nameof(ChangedById))] public User ChangedBy { get; set; } = null!;
+}
+
+// ─── Inventory Reconciliation (INV-EXT-1, INV-EXT-2) ───────────
+
+public class InventoryReconciliation : BaseEntity
+{
+    public Guid ProjectId   { get; set; }
+    [Required, MaxLength(50)] public string Status { get; set; } = "InProgress";
+    // InProgress | Completed | CompletedWithCorrection
+    public int VersionNumber { get; set; } = 1;
+    public DateTime? CompletedAt { get; set; }
+    public Guid? OfficerId { get; set; }
+    [MaxLength(1000)] public string? PdfPath { get; set; }
+
+    public Project Project  { get; set; } = null!;
+    [ForeignKey(nameof(OfficerId))] public User? Officer { get; set; }
+    public ICollection<ReconciliationItem> Items { get; set; } = new List<ReconciliationItem>();
+}
+
+public class ReconciliationItem : BaseEntity
+{
+    public Guid ReconciliationId { get; set; }
+    public Guid MaterialId       { get; set; }
+    [MaxLength(300)] public string MaterialName { get; set; } = "";
+    [Column(TypeName = "decimal(10,3)")] public decimal SystemStock   { get; set; }
+    [Column(TypeName = "decimal(10,3)")] public decimal? PhysicalStock { get; set; }
+    [Column(TypeName = "decimal(10,3)")] public decimal? Variance      { get; set; }
+
+    public InventoryReconciliation Reconciliation { get; set; } = null!;
+}
+
 // ─── Procurement ───────────────────────────────────────────────────────────
 
 public class Vendor : BaseEntity
@@ -457,9 +517,17 @@ public class Risk : BaseEntity
     public int? RiskScore { get; set; }   // Probability × Impact (1–25)
     [MaxLength(50)] public string? RiskLevel { get; set; }  // Low | Medium | High | Critical
 
-    // Status lifecycle
+    // Status lifecycle (RM2-EXT-1)
     [Required, MaxLength(50)] public string Status { get; set; } = "Draft";
-    // Draft | DeptReview | Analysis | MitigationPlanning | MitigationInProgress | Closed | Accepted
+    // Draft | DeptReview | Analysis | MitigationPlanning | MitigationInProgress | Closed | Accepted | Void
+
+    // Lifecycle timestamps (RM2-EXT-2)
+    public DateTime? RaisedOn            { get; set; }
+    public DateTime? AcknowledgedOn      { get; set; }
+    public DateTime? AnalysisCompletedOn { get; set; }
+    public DateTime? ClosedOnTimestamp   { get; set; }
+    public DateTime? RejectedOn          { get; set; }
+    [MaxLength(1000)] public string? VoidRemarks { get; set; }
 
     // Mitigation
     [MaxLength(2000)] public string? MitigationPlan { get; set; }
@@ -503,4 +571,41 @@ public class RiskUpdate : BaseEntity
 
     public Risk Risk { get; set; } = null!;
     [ForeignKey(nameof(UpdatedById))] public User UpdatedBy { get; set; } = null!;
+}
+
+// ─── Quotation (M4-4, M4-5) ────────────────────────────────────
+
+public class Quotation : BaseEntity
+{
+    public Guid MaterialRequestId { get; set; }
+    public Guid VendorId          { get; set; }
+    [Column(TypeName = "decimal(18,2)")] public decimal UnitPrice    { get; set; }
+    public int? LeadTimeDays      { get; set; }
+    public DateTime? ValidityDate { get; set; }
+    [MaxLength(500)] public string? PaymentTerms { get; set; }
+    [MaxLength(500)] public string? AttachmentPath { get; set; }
+    public bool IsRecommended     { get; set; } = false;
+    public bool IsSelected        { get; set; } = false;
+    [MaxLength(1000)] public string? SelectionJustification { get; set; }
+    [Column(TypeName = "decimal(5,2)")] public decimal? TechnicalScore { get; set; }
+
+    public MaterialRequest MaterialRequest { get; set; } = null!;
+    public Vendor          Vendor          { get; set; } = null!;
+}
+
+// ─── Negotiation Log (M4-6) ─────────────────────────────────────
+
+public class NegotiationLog : BaseEntity
+{
+    public Guid MaterialRequestId { get; set; }
+    public Guid VendorId          { get; set; }
+    public int  Round             { get; set; } = 1;
+    [Column(TypeName = "decimal(18,2)")] public decimal NegotiatedPrice { get; set; }
+    [Column(TypeName = "decimal(18,2)")] public decimal? InitialPrice   { get; set; }
+    [MaxLength(1000)] public string? Notes { get; set; }
+    public Guid LoggedById { get; set; }
+
+    public MaterialRequest MaterialRequest { get; set; } = null!;
+    public Vendor Vendor { get; set; } = null!;
+    [ForeignKey(nameof(LoggedById))] public User LoggedBy { get; set; } = null!;
 }
