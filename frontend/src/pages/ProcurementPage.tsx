@@ -34,6 +34,9 @@ export default function ProcurementPage() {
   const [subTab, setSubTab] = useState<'mr' | 'po' | 'quotes' | 'negotiate'>('mr');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedMR, setSelectedMR] = useState<any>(null);
+  const [selectedMRForQuotes, setMRForQuotes] = useState<string>('');
+  const [newQuote, setNewQuote] = useState({ vendorId:'', unitPrice:'', leadDays:'', paymentTerms:'' });
+  const [newNeg, setNewNeg] = useState({ mrId:'', vendorId:'', price:'', initial:'', notes:'' });
   const qc = useQueryClient();
 
   const { data: projects } = useQuery({

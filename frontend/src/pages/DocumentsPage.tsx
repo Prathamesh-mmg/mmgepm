@@ -49,7 +49,7 @@ export default function DocumentsPage() {
   const [showDrawingForm, setShowDrawingForm] = useState(false);
   const [selectedCR, setCR]           = useState<any>(null);
   const [crAdvanceNote, setCrNote]    = useState('');
-  const [drawingForm, setDrawingForm2] = useState({
+  const [drawingForm, setDrawingForm] = useState({
     name:'', subProjectId:'', category:'Civil', revision:'R0',
     receivedFrom:'', remarks:'', file: null as File|null,
   });
@@ -329,7 +329,7 @@ export default function DocumentsPage() {
           {canManage && !showDrawingForm && (
             <button
               className="btn-primary flex items-center gap-1.5"
-              onClick={() => { setDrawingForm2({ name:'', subProjectId:'', category:'Civil', revision:'R0', receivedFrom:'', remarks:'', file:null }); setShowDrawingForm(true); }}>
+              onClick={() => { setDrawingForm({ name:'', subProjectId:'', category:'Civil', revision:'R0', receivedFrom:'', remarks:'', file:null }); setShowDrawingForm(true); }}>
               <Plus className="w-4 h-4" /> + Drawing
             </button>
           )}
@@ -342,7 +342,7 @@ export default function DocumentsPage() {
                 <div className="form-group col-span-2 md:col-span-1">
                   <label className="form-label">Drawing Name *</label>
                   <input className="form-input" value={drawingForm.name}
-                    onChange={e => setDrawingForm2(f=>({...f,name:e.target.value}))} />
+                    onChange={e => setDrawingForm(f=>({...f,name:e.target.value}))} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Category</label>
@@ -350,7 +350,7 @@ export default function DocumentsPage() {
                     {DRAWING_CATS.map(c => (
                       <label key={c} className="flex items-center gap-1.5 cursor-pointer">
                         <input type="radio" name="cat" value={c} checked={drawingForm.category===c}
-                          onChange={() => setDrawingForm2(f=>({...f,category:c}))} />
+                          onChange={() => setDrawingForm(f=>({...f,category:c}))} />
                         <span className="text-sm">{c}</span>
                       </label>
                     ))}
@@ -360,24 +360,24 @@ export default function DocumentsPage() {
                   <label className="form-label">Drawing Revision</label>
                   <input className="form-input" placeholder="e.g. R0"
                     value={drawingForm.revision}
-                    onChange={e => setDrawingForm2(f=>({...f,revision:e.target.value}))} />
+                    onChange={e => setDrawingForm(f=>({...f,revision:e.target.value}))} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Received From</label>
                   <input className="form-input" placeholder="Architect / Consultant name"
                     value={drawingForm.receivedFrom}
-                    onChange={e => setDrawingForm2(f=>({...f,receivedFrom:e.target.value}))} />
+                    onChange={e => setDrawingForm(f=>({...f,receivedFrom:e.target.value}))} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Attachment *</label>
                   <input type="file" className="form-input text-sm"
-                    onChange={e => setDrawingForm2(f=>({...f,file:e.target.files?.[0]||null}))} />
+                    onChange={e => setDrawingForm(f=>({...f,file:e.target.files?.[0]||null}))} />
                 </div>
                 <div className="form-group col-span-2 md:col-span-3">
                   <label className="form-label">Remarks</label>
                   <textarea className="form-input" rows={2}
                     value={drawingForm.remarks}
-                    onChange={e => setDrawingForm2(f=>({...f,remarks:e.target.value}))} />
+                    onChange={e => setDrawingForm(f=>({...f,remarks:e.target.value}))} />
                 </div>
               </div>
               <div className="flex gap-2 justify-end mt-3">

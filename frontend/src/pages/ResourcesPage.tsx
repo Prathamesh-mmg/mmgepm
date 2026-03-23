@@ -21,7 +21,7 @@ export default function ResourcesPage() {
 
   const { data: allocations } = useQuery({
     queryKey: ['allocations', selectedProjectId],
-    queryFn:  () => resourcesApi.getAllocations({ projectId: selectedProjectId! }).then(r => r.data),
+    queryFn:  () => resourcesApi.getAllocations({ projectId: String(selectedProjectId!) }).then(r => r.data),
     enabled:  !!selectedProjectId && subTab === 'allocations',
   });
 

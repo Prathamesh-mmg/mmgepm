@@ -2,7 +2,7 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../store/authStore';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api';
+const BASE_URL = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:5000/api';
 
 let isRefreshing = false;
 let failedQueue: { resolve: Function; reject: Function }[] = [];

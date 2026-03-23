@@ -27,6 +27,8 @@ export default function TaskDetailPage() {
   const { hasRole, user } = useAuthStore(s => ({ hasRole: s.hasRole, user: s.user }));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const depList: any[] = [];
+  const siblingList: any[] = [];
   const [tab, setTab] = useState<Tab>('details');
   const [progressNote, setNote] = useState('');
   const [progressPct, setPct] = useState(0);

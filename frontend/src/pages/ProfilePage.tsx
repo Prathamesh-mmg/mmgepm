@@ -33,7 +33,7 @@ export default function ProfilePage() {
 
       {/* Avatar + name */}
       <div className="card p-6 flex items-center gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-[var(--primary)] flex items-center justify-center text-2xl font-bold text-[#0e0b08]">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--primary)] flex items-center justify-center text-2xl font-bold text-white">
           {user?.firstName?.charAt(0) ?? 'U'}
         </div>
         <div>
@@ -56,10 +56,22 @@ export default function ProfilePage() {
 
       {tab === 'profile' && (
         <div className="card p-6 grid grid-cols-2 gap-4 text-sm">
-          <div><p className="text-xs text-[var(--text-secondary)] mb-0.5">Full Name</p><p className="font-medium">{`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || '—'}</p></div>
-          <div><p className="text-xs text-[var(--text-secondary)] mb-0.5">Email</p><p className="font-medium">{user?.email ?? '—'}</p></div>
-          <div><p className="text-xs text-[var(--text-secondary)] mb-0.5">Designation</p><p className="font-medium">{user?.designation ?? '—'}</p></div>
-          <div><p className="text-xs text-[var(--text-secondary)] mb-0.5">Department</p><p className="font-medium">{user?.department ?? '—'}</p></div>
+          <div>
+            <p className="text-xs text-[var(--text-secondary)] mb-0.5">Full Name</p>
+            <p className="font-medium">{`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--text-secondary)] mb-0.5">Email</p>
+            <p className="font-medium">{user?.email ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--text-secondary)] mb-0.5">Job Title</p>
+            <p className="font-medium">{user?.jobTitle ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--text-secondary)] mb-0.5">Department</p>
+            <p className="font-medium">{user?.department ?? '—'}</p>
+          </div>
         </div>
       )}
 
@@ -84,7 +96,10 @@ export default function ProfilePage() {
               )}
             </div>
             <button type="submit" disabled={pwMutation.isPending} className="btn-primary">
-              {pwMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Updating…</> : <><Save className="w-4 h-4" /> Update Password</>}
+              {pwMutation.isPending
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Updating…</>
+                : <><Save className="w-4 h-4" /> Update Password</>
+              }
             </button>
           </form>
         </div>

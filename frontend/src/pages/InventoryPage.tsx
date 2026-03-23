@@ -16,13 +16,13 @@ export default function InventoryPage() {
 
   const { data: stock, isLoading } = useQuery({
     queryKey: ['inventory-stock', selectedProjectId],
-    queryFn:  () => inventoryApi.getLedger({ projectId: selectedProjectId! }).then(r => r.data),
+    queryFn:  () => inventoryApi.getLedger({ projectId: String(selectedProjectId!) }).then(r => r.data),
     enabled:  !!selectedProjectId,
   });
 
   const { data: stockReport } = useQuery({
     queryKey: ['stock-report', selectedProjectId],
-    queryFn:  () => inventoryApi.getLedger({ projectId: selectedProjectId! }).then(r => r.data),
+    queryFn:  () => inventoryApi.getLedger({ projectId: String(selectedProjectId!) }).then(r => r.data),
     enabled:  !!selectedProjectId && subTab === 'stock',
   });
 
