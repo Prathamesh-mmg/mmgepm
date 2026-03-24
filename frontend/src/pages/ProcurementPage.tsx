@@ -446,11 +446,18 @@ export default function ProcurementPage() {
               <h2 className="font-semibold text-base">New Material Request</h2>
               <button className="btn-icon btn-ghost" onClick={() => setShowCreate(false)}><X className="w-4 h-4" /></button>
             </div>
-            <form onSubmit={handleSubmit(d => createMutation.mutate(d))}>
+            <form onSubmit={handleSubmit(d => createMutation.mutate({
+                projectId:    d.projectId,
+                title:        d.description,
+                justification:d.specifications,
+                priority:     d.priority || 'Normal',
+                requiredDate: d.requiredByDate || null,
+                items: [{ description: d.description, unit: 'Nos', quantity: 1, estimatedCost: null }],
+              }))}>
               <div className="modal-body grid grid-cols-2 gap-4">
                 <div className="input-group col-span-2">
                   <label className="input-label">Project *</label>
-                  <select className="select" {...register('projectId', { valueAsNumber: true })}>
+                  <select className="select" {...register('projectId', { required: true })}>
                     <option value="">Select project…</option>
                     {projects?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>

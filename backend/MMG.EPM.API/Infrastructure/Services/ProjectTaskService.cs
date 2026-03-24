@@ -76,7 +76,16 @@ public class ProjectService : IProjectService
                            || p.ProjectManagerId == userId || p.ProjectHeadId == userId || p.PlanningEngineerId == userId);
 
         if (!string.IsNullOrEmpty(search))
-            q = q.Where(p => p.Name.Contains(search) || p.Code.Contains(search));
+        {
+            var s = search.ToLower();
+            q = q.Where(p =>
+                p.Name.ToLower().Contains(s) ||
+                p.Code.ToLower().Contains(s) ||
+                (p.Country != null && p.Country.ToLower().Contains(s)) ||
+                (p.Location != null && p.Location.ToLower().Contains(s)) ||
+                (p.ClientName != null && p.ClientName.ToLower().Contains(s)) ||
+                (p.Description != null && p.Description.ToLower().Contains(s)));
+        }
         if (!string.IsNullOrEmpty(status))
             q = q.Where(p => p.Status == status);
 

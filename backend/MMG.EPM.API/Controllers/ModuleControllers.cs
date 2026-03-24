@@ -62,6 +62,10 @@ public class BudgetController : ControllerBase
     public async Task<IActionResult> GetBudgets(Guid projectId)
         => Ok(await _budget.GetProjectBudgetsAsync(projectId));
 
+    [HttpPost]
+    public async Task<IActionResult> CreateBudget([FromBody] CreateProjectBudgetRequest req)
+        => Ok(await _budget.CreateBudgetAsync(req, _cu.UserId));
+
     [HttpGet("wbs/{projectId:guid}")]
     public async Task<IActionResult> GetWBS(Guid projectId)
         => Ok(await _budget.GetWBSItemsAsync(projectId));
@@ -169,6 +173,26 @@ public class InventoryController : ControllerBase
     public async Task<IActionResult> GetTransfers([FromQuery] Guid? projectId)
         => Ok(await _inv.GetSiteTransfersAsync(projectId));
 
+    [HttpPost("site-transfers")]
+    public async Task<IActionResult> CreateTransfer([FromBody] CreateSiteTransferRequest req)
+    {
+        var transfer = new SiteTransfer
+        {
+            MaterialId    = req.MaterialId,
+            FromProjectId = req.FromProjectId,
+            ToProjectId   = req.ToProjectId,
+            Quantity      = req.Quantity,
+            Notes         = req.Notes,
+            TransferDate  = req.TransferDate ?? DateTime.UtcNow,
+            Status        = "Pending",
+            RequestedById = _cu.UserId,
+            CreatedById   = _cu.UserId,
+        };
+        _db.SiteTransfers.Add(transfer);
+        await _db.SaveChangesAsync();
+        return Ok(new { transfer.Id, transfer.Status, transfer.TransferDate });
+    }
+
     [HttpPost("stock-entry")]
     public async Task<IActionResult> AddEntry(
         [FromQuery] Guid materialId, [FromQuery] Guid projectId,
@@ -191,13 +215,44 @@ public class ResourcesController : ControllerBase
 {
     private readonly IResourceService _res;
     private readonly ICurrentUserService _cu;
-    public ResourcesController(IResourceService res, ICurrentUserService cu) { _res = res; _cu = cu; }
+    private readonly AppDbContext _db;
+    public ResourcesController(IResourceService res, ICurrentUserService cu, AppDbContext db) { _res = res; _cu = cu; _db = db; }
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search, [FromQuery] string? status, [FromQuery] string? type,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 30)
         => Ok(await _res.GetResourcesAsync(search, status, type, page, pageSize));
+
+    [HttpGet("types")]
+    public async Task<IActionResult> GetTypes()
+    {
+        var types = await _db.ResourceTypes.Where(t => !t.IsDeleted && t.IsActive)
+            .Select(t => new { t.Id, t.Name, t.Category }).ToListAsync();
+        return Ok(types);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateResourceRequest req)
+        => Ok(await _res.CreateResourceAsync(req, _cu.UserId));
+
+    [HttpPatch("{id:guid}/status")]
+    public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateResourceStatusRequest req)
+    {
+        var r = await _db.Resources.FindAsync(id) ?? throw new KeyNotFoundException();
+        r.Status = req.Status; r.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { r.Id, r.Status });
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var r = await _db.Resources.FindAsync(id) ?? throw new KeyNotFoundException();
+        r.IsDeleted = true; r.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
 
     [HttpGet("allocations")]
     public async Task<IActionResult> GetAllocations([FromQuery] Guid? projectId, [FromQuery] Guid? resourceId)
@@ -249,6 +304,105 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> UpdateCRStatus(Guid id, [FromBody] UpdateCRStatusRequest req)
         => Ok(await _docs.UpdateCRStatusAsync(id, req.Status, req.Comments, _cu.UserId));
 }
+
+// ─── Drawings Controller ───────────────────────────────────────────────────
+
+[ApiController, Route("api/drawings"), Authorize]
+public class DrawingsController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUserService _cu;
+    private readonly IFileStorageService _storage;
+
+    public DrawingsController(AppDbContext db, ICurrentUserService cu, IFileStorageService storage)
+    { _db = db; _cu = cu; _storage = storage; }
+
+    [HttpGet]
+    public async Task<IActionResult> GetDrawings([FromQuery] Guid? projectId)
+    {
+        var q = _db.Drawings
+            .Include(d => d.Project)
+            .Include(d => d.UploadedBy)
+            .Where(d => !d.IsDeleted);
+        if (projectId.HasValue) q = q.Where(d => d.ProjectId == projectId.Value);
+        var items = await q.OrderByDescending(d => d.CreatedAt)
+            .Select(d => new {
+                d.Id, d.DrawingNumber, d.Title, d.Discipline,
+                d.Scale, d.Revision, d.Status,
+                ProjectName  = d.Project.Name,
+                UploadedBy   = d.UploadedBy.FullName,
+                d.CreatedAt,
+                d.FileAttachmentId
+            }).ToListAsync();
+        return Ok(items);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateDrawing(
+        [FromForm] Guid projectId,
+        [FromForm] string drawingNumber,
+        [FromForm] string title,
+        [FromForm] string? discipline,
+        [FromForm] string? scale,
+        [FromForm] string revision,
+        [FromForm] string status,
+        IFormFile? file)
+    {
+        Guid? fileAttachmentId = null;
+        if (file != null)
+        {
+            var (path, url) = await _storage.SaveFileAsync(file, $"drawings/{projectId}");
+            var att = new FileAttachment
+            {
+                FileName = file.FileName, FilePath = path, FileUrl = url,
+                ContentType = file.ContentType, FileSize = file.Length,
+                EntityType = "Drawing", UploadedById = _cu.UserId,
+            };
+            _db.FileAttachments.Add(att);
+            await _db.SaveChangesAsync();
+            fileAttachmentId = att.Id;
+        }
+
+        var drawing = new Drawing
+        {
+            ProjectId        = projectId,
+            DrawingNumber    = drawingNumber,
+            Title            = title,
+            Discipline       = discipline,
+            Scale            = scale,
+            Revision         = revision,
+            Status           = status ?? "IFC",
+            FileAttachmentId = fileAttachmentId,
+            UploadedById     = _cu.UserId,
+            CreatedById      = _cu.UserId,
+        };
+        _db.Drawings.Add(drawing);
+        await _db.SaveChangesAsync();
+        return Ok(new { drawing.Id, drawing.DrawingNumber, drawing.Title, drawing.Revision, drawing.Status });
+    }
+
+    [HttpPatch("{id:guid}/status")]
+    public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateDrawingStatusRequest req)
+    {
+        var d = await _db.Drawings.FindAsync(id) ?? throw new KeyNotFoundException("Drawing not found");
+        d.Status = req.Status;
+        d.Revision = req.Revision ?? d.Revision;
+        d.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { d.Id, d.Status, d.Revision });
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteDrawing(Guid id)
+    {
+        var d = await _db.Drawings.FindAsync(id) ?? throw new KeyNotFoundException();
+        d.IsDeleted = true; d.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+}
+
+public record UpdateDrawingStatusRequest(string Status, string? Revision);
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
 

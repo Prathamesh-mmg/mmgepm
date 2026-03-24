@@ -77,6 +77,20 @@ export default function BudgetPage() {
     enabled:  !!selectedLine?.id && tab === 'expenditures',
   });
 
+  const [budgetForm, setBudgetForm] = useState({ totalAmount: '', currency: 'USD', notes: '' });
+
+  const createBudgetMutation = useMutation({
+    mutationFn: (data: any) => api.post('/budget', data),
+    onSuccess: (res) => {
+      toast.success('Budget created successfully');
+      qc.invalidateQueries({ queryKey: ['budgets', projectId] });
+      setShowCB(false);
+      setBudgetForm({ totalAmount: '', currency: 'USD', notes: '' });
+      if (res.data) setSelBudget(res.data);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || e.response?.data?.inner || 'Failed to create budget'),
+  });
+
   const stateMutation = useMutation({
     mutationFn: ({ id, newState }: { id:string; newState:string }) =>
       api.post(`/budget/${id}/state`, { newState }),
@@ -636,5 +650,57 @@ export default function BudgetPage() {
         </>
       )}
     </div>
+      {/* ── Create Budget Modal ── */}
+      {showCreateBudget && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCB(false)}>
+          <div className="modal max-w-md w-full">
+            <div className="modal-header">
+              <h2 className="font-semibold text-base">Create Project Budget</h2>
+              <button className="modal-close" onClick={() => setShowCB(false)}>✕</button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="form-group">
+                <label className="form-label">Total Approved Budget *</label>
+                <input
+                  type="number" className="form-input" placeholder="e.g. 500000"
+                  value={budgetForm.totalAmount}
+                  onChange={e => setBudgetForm(f => ({...f, totalAmount: e.target.value}))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Currency</label>
+                <select className="form-select"
+                  value={budgetForm.currency}
+                  onChange={e => setBudgetForm(f => ({...f, currency: e.target.value}))}>
+                  <option>USD</option><option>TZS</option><option>KES</option>
+                  <option>ZMW</option><option>UGX</option><option>AED</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Notes</label>
+                <textarea className="form-input" rows={2} placeholder="Budget notes or version description..."
+                  value={budgetForm.notes}
+                  onChange={e => setBudgetForm(f => ({...f, notes: e.target.value}))} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowCB(false)}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={!budgetForm.totalAmount || createBudgetMutation.isPending}
+                onClick={() => createBudgetMutation.mutate({
+                  projectId,
+                  totalAmount: Number(budgetForm.totalAmount),
+                  currency: budgetForm.currency,
+                  notes: budgetForm.notes || null,
+                })}
+              >
+                {createBudgetMutation.isPending ? 'Creating…' : 'Create Budget'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   );
 }

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MMG.EPM.API.Data;
 using MMG.EPM.API.Domain.DTOs;
+using MMG.EPM.API.Domain.Entities;
 using MMG.EPM.API.Infrastructure.Services;
 
 namespace MMG.EPM.API.Controllers;
@@ -11,9 +13,10 @@ public class TasksController : ControllerBase
     private readonly ITaskService        _tasks;
     private readonly ICurrentUserService _cu;
     private readonly IReportService      _reports;
+    private readonly AppDbContext        _db;
 
-    public TasksController(ITaskService tasks, ICurrentUserService cu, IReportService reports)
-    { _tasks = tasks; _cu = cu; _reports = reports; }
+    public TasksController(ITaskService tasks, ICurrentUserService cu, IReportService reports, AppDbContext db)
+    { _tasks = tasks; _cu = cu; _reports = reports; _db = db; }
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -69,4 +72,18 @@ public class TasksController : ControllerBase
         var bytes = await _reports.ExportTasksToExcelAsync(projectId);
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "tasks.xlsx");
     }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var task = await _db.Tasks.FindAsync(id);
+        if (task == null || task.IsDeleted) return NotFound();
+        task.IsDeleted  = true;
+        task.DeletedAt  = DateTime.UtcNow;
+        task.UpdatedAt  = DateTime.UtcNow;
+        task.UpdatedById = _cu.UserId;
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
 }

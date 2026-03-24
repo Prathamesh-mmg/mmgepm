@@ -47,6 +47,8 @@ export default function DocumentsPage() {
   const [selectedDrawing, setDrawing] = useState<any>(null);
   const [showVersions, setVersions]     = useState(false);
   const [showDrawingForm, setShowDrawingForm] = useState(false);
+  const [showCRForm, setShowCRForm] = useState(false);
+  const [crForm, setCRForm] = useState({ title: '', description: '', reason: '', costImpact: '', scheduleDays: '' });
   const [selectedCR, setCR]           = useState<any>(null);
   const [crAdvanceNote, setCrNote]    = useState('');
   const [drawingForm, setDrawingForm] = useState({
@@ -117,9 +119,12 @@ export default function DocumentsPage() {
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => {
+      if (!projectId) { throw new Error('Please select a project first'); }
       const fd = new FormData();
       fd.append('file', file);
-      if (projectId) fd.append('projectId', projectId);
+      fd.append('projectId', projectId);
+      fd.append('title', file.name.replace(/\.[^.]+$/, ''));  // filename without extension as title
+      fd.append('documentType', 'General');
       if (selectedFolder) fd.append('folderId', selectedFolder);
       return api.post('/documents/upload', fd, { headers:{ 'Content-Type':'multipart/form-data' } });
     },
@@ -132,14 +137,16 @@ export default function DocumentsPage() {
   const createDrawingMutation = useMutation({
     mutationFn: () => {
       const fd = new FormData();
-      fd.append('name', drawingForm.name);
-      fd.append('category', drawingForm.category);
-      fd.append('revision', drawingForm.revision);
-      fd.append('receivedFrom', drawingForm.receivedFrom);
-      fd.append('remarks', drawingForm.remarks);
-      if (projectId) fd.append('projectId', projectId);
+      if (!projectId) throw new Error('Select a project first');
+      fd.append('projectId', projectId);
+      fd.append('drawingNumber', drawingForm.name);
+      fd.append('title', drawingForm.name);
+      fd.append('discipline', drawingForm.category);
+      fd.append('revision', drawingForm.revision || 'A');
+      fd.append('status', 'IFC');
+      if (drawingForm.remarks) fd.append('scale', drawingForm.remarks);
       if (drawingForm.file) fd.append('file', drawingForm.file);
-      return api.post('/documents/drawings', fd, { headers:{'Content-Type':'multipart/form-data'} });
+      return api.post('/drawings', fd, { headers:{'Content-Type':'multipart/form-data'} });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey:['drawings'] });
@@ -169,6 +176,17 @@ export default function DocumentsPage() {
       setCrNote('');
     },
     onError: (e:any) => toast.error(e.response?.data?.message || 'Failed'),
+  });
+
+  const createCRMutation = useMutation({
+    mutationFn: (data: any) => api.post('/documents/change-requests', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['changes'] });
+      toast.success('Change Request created');
+      setShowCRForm(false);
+      setCRForm({ title: '', description: '', reason: '', costImpact: '', scheduleDays: '' });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to create CR'),
   });
 
   const canManage = hasRole('Admin') || hasRole('Project Manager') || hasRole('Planning Engineer');
@@ -508,7 +526,7 @@ export default function DocumentsPage() {
             <div className="card-header">
               <span className="font-medium text-sm">Change Requests</span>
               {canManage && (
-                <button className="btn-primary btn-sm flex items-center gap-1">
+                <button className="btn-primary btn-sm flex items-center gap-1" onClick={() => setShowCRForm(true)}>
                   <Plus className="w-3.5 h-3.5" /> New CR
                 </button>
               )}
@@ -615,5 +633,63 @@ export default function DocumentsPage() {
         </div>
       )}
     </div>
+      {/* ── Create Change Request Modal ── */}
+      {showCRForm && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCRForm(false)}>
+          <div className="modal max-w-lg w-full">
+            <div className="modal-header">
+              <h2 className="font-semibold text-base">New Change Request</h2>
+              <button className="modal-close" onClick={() => setShowCRForm(false)}>✕</button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="form-group">
+                <label className="form-label">Title *</label>
+                <input className="form-input" placeholder="Change request title"
+                  value={crForm.title} onChange={e => setCRForm(f => ({...f, title: e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                <textarea className="form-input" rows={2} placeholder="Describe the change..."
+                  value={crForm.description} onChange={e => setCRForm(f => ({...f, description: e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Reason / Justification</label>
+                <textarea className="form-input" rows={2} placeholder="Why is this change needed?"
+                  value={crForm.reason} onChange={e => setCRForm(f => ({...f, reason: e.target.value}))} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="form-group">
+                  <label className="form-label">Cost Impact (USD)</label>
+                  <input type="number" className="form-input" placeholder="0.00"
+                    value={crForm.costImpact} onChange={e => setCRForm(f => ({...f, costImpact: e.target.value}))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Schedule Impact (days)</label>
+                  <input type="number" className="form-input" placeholder="0"
+                    value={crForm.scheduleDays} onChange={e => setCRForm(f => ({...f, scheduleDays: e.target.value}))} />
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowCRForm(false)}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={!crForm.title || createCRMutation.isPending}
+                onClick={() => createCRMutation.mutate({
+                  projectId: projectId,
+                  title: crForm.title,
+                  description: crForm.description || null,
+                  reason: crForm.reason || null,
+                  costImpact: crForm.costImpact ? Number(crForm.costImpact) : null,
+                  scheduleImpactDays: crForm.scheduleDays ? Number(crForm.scheduleDays) : null,
+                })}
+              >
+                {createCRMutation.isPending ? 'Creating…' : 'Create CR'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   );
 }

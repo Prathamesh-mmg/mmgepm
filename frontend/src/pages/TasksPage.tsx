@@ -77,7 +77,16 @@ export default function TasksPage() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       tasksApi.updateStatus(id, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
-  });
+  })
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/tasks/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      import('react-hot-toast').then(({ default: toast }) => toast.success('Task deleted'));
+    },
+    onError: () => import('react-hot-toast').then(({ default: toast }) => toast.error('Failed to delete task')),
+  });;
 
   const handleImport = async () => {
     if (!importFile || !projectFilter) { toast.error('Select a project first'); return; }
@@ -188,7 +197,7 @@ export default function TasksPage() {
                 <tr>
                   <th>WBS</th><th>Task Name</th><th>Status</th>
                   <th>Priority</th><th>Progress</th><th>Assignee</th>
-                  <th>Due Date</th><th></th>
+                  <th>Due Date</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -234,8 +243,23 @@ export default function TasksPage() {
                       {t.endDate ? new Date(t.endDate).toLocaleDateString() : '—'}
                     </td>
                     <td>
-                      <button className="text-[var(--primary)] hover:text-yellow-800 text-sm"
-                        onClick={() => navigate(`/tasks/${t.id}`)}>View</button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="text-xs text-[var(--primary)] hover:underline font-medium"
+                          onClick={() => navigate(`/tasks/${t.id}`)}>
+                          View
+                        </button>
+                        {canManage && (
+                          <button
+                            className="text-xs text-red-500 hover:text-red-700 font-medium"
+                            onClick={e => {
+                              e.stopPropagation();
+                              if (confirm(`Delete task "${t.name}"?`)) deleteTaskMutation.mutate(t.id);
+                            }}>
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
