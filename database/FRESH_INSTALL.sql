@@ -1361,13 +1361,13 @@ GO
 -- ============================================================
 -- HANGFIRE TABLES (for background jobs / DPR auto-generation)
 -- ============================================================
+EXEC('CREATE SCHEMA [HangFire]');
+GO
+
 CREATE TABLE [HangFire].[Schema]
     (  [Identifier] [nvarchar](100) NOT NULL,
        CONSTRAINT [PK_HangFire_Schema] PRIMARY KEY CLUSTERED ([Identifier] ASC)
     );
-GO
-
-EXEC('CREATE SCHEMA [HangFire]');
 GO
 
 -- Hangfire core tables
