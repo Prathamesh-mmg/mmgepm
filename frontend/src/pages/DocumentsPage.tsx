@@ -47,6 +47,8 @@ export default function DocumentsPage() {
   const [selectedDrawing, setDrawing] = useState<any>(null);
   const [showVersions, setVersions]     = useState(false);
   const [showDrawingForm, setShowDrawingForm] = useState(false);
+  const [showReviseForm, setShowReviseForm] = useState(false);
+  const [reviseForm, setReviseForm]         = useState({ revision: '', notes: '', file: null as File|null });
   const [showCRForm, setShowCRForm] = useState(false);
   const [crForm, setCRForm] = useState({ title: '', description: '', reason: '', costImpact: '', scheduleDays: '' });
   const [selectedCR, setCR]           = useState<any>(null);
@@ -168,7 +170,7 @@ export default function DocumentsPage() {
 
   const advanceCRMutation = useMutation({
     mutationFn: ({ id, toState }: { id:string; toState:string }) =>
-      api.post(`/change-requests/${id}/lifecycle/advance`, { toState, comments: crAdvanceNote }),
+      api.patch(`/documents/change-requests/${id}/status`, { status: toState, comments: crAdvanceNote }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey:['changes'] });
       qc.invalidateQueries({ queryKey:['cr-log'] });
@@ -176,6 +178,27 @@ export default function DocumentsPage() {
       setCrNote('');
     },
     onError: (e:any) => toast.error(e.response?.data?.message || 'Failed'),
+  });
+
+  const reviseMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedDrawing) throw new Error('No drawing selected');
+      const fd = new FormData();
+      fd.append('revision', reviseForm.revision || 'R1');
+      fd.append('notes', reviseForm.notes || '');
+      fd.append('status', 'Current');
+      if (reviseForm.file) fd.append('file', reviseForm.file);
+      return api.post(`/drawings/${selectedDrawing.id}/versions`, fd,
+        { headers: { 'Content-Type': 'multipart/form-data' } });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['drawings'] });
+      qc.invalidateQueries({ queryKey: ['drawing-versions'] });
+      toast.success('Drawing revised — new version created');
+      setShowReviseForm(false);
+      setReviseForm({ revision: '', notes: '', file: null });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to revise drawing'),
   });
 
   const createCRMutation = useMutation({
@@ -451,6 +474,14 @@ export default function DocumentsPage() {
                             className="p-1.5 rounded hover:bg-blue-50 text-gray-500 hover:text-blue-600" title="Version history">
                             <GitBranch className="w-3.5 h-3.5" />
                           </button>
+                          {canManage && (
+                            <button onClick={() => { setDrawing(d); setReviseForm({ revision: '', notes: '', file: null }); setShowReviseForm(true); }}
+                              className="text-xs px-2 py-1 rounded font-medium transition-colors"
+                              style={{background:'var(--primary-light)', color:'var(--primary)'}}
+                              title="Revise drawing">
+                              Revise
+                            </button>
+                          )}
                           {/* DM-EXT-2: release */}
                           {canManage && (d.state === 'Release Drawings' || !d.state) && (
                             <button onClick={() => releaseDrawingMutation.mutate(d.id)}
@@ -685,6 +716,53 @@ export default function DocumentsPage() {
                 })}
               >
                 {createCRMutation.isPending ? 'Creating…' : 'Create CR'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Revise Drawing Modal (TC-DOC-005) ── */}
+      {showReviseForm && selectedDrawing && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReviseForm(false)}>
+          <div className="modal max-w-md w-full">
+            <div className="modal-header">
+              <div>
+                <h2 className="font-semibold">Revise Drawing</h2>
+                <p className="text-xs mt-0.5" style={{color:'var(--text-secondary)'}}>
+                  {selectedDrawing.drawingNumber || selectedDrawing.name} — Current: {selectedDrawing.revision}
+                </p>
+              </div>
+              <button className="modal-close" onClick={() => setShowReviseForm(false)}>✕</button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="form-group">
+                <label className="form-label">New Revision Code *</label>
+                <input className="form-input" placeholder="e.g. R1, R2, Rev-A, Rev-B"
+                  value={reviseForm.revision}
+                  onChange={e => setReviseForm(f => ({...f, revision: e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Revision Notes</label>
+                <textarea className="form-input" rows={3}
+                  placeholder="What changed in this revision?"
+                  value={reviseForm.notes}
+                  onChange={e => setReviseForm(f => ({...f, notes: e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Upload Revised File</label>
+                <input type="file" className="form-input" style={{height:'auto', padding:'8px'}}
+                  onChange={e => setReviseForm(f => ({...f, file: e.target.files?.[0] || null}))} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowReviseForm(false)}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={!reviseForm.revision || reviseMutation.isPending}
+                onClick={() => reviseMutation.mutate()}
+              >
+                {reviseMutation.isPending ? 'Saving…' : 'Save Revision'}
               </button>
             </div>
           </div>

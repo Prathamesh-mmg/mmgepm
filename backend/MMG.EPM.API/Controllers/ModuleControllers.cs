@@ -132,6 +132,20 @@ public class ProcurementController : ControllerBase
     public async Task<IActionResult> AdvanceMR(Guid id, [FromBody] AdvanceMRRequest req)
         => Ok(await _proc.AdvanceMRAsync(id, req.Action, _cu.UserId));
 
+    [HttpDelete("material-requests/{id:guid}")]
+    public async Task<IActionResult> DeleteMR(Guid id)
+    {
+        var mr = await _db.MaterialRequests.FindAsync(id);
+        if (mr == null || mr.IsDeleted) return NotFound();
+        if (mr.Status != "Draft")
+            return BadRequest(new { message = "Only Draft MRs can be deleted" });
+        mr.IsDeleted  = true;
+        mr.DeletedAt  = DateTime.UtcNow;
+        mr.UpdatedAt  = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
     [HttpGet("purchase-orders")]
     public async Task<IActionResult> GetPOs([FromQuery] Guid? projectId)
         => Ok(await _proc.GetPOsAsync(projectId));

@@ -20,6 +20,10 @@ export default function InventoryPage() {
   const [subTab,    setSubTab]       = useState<'stock' | 'ledger' | 'transfers'>('stock');
   const [showReceipt, setShowReceipt] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showIssue,    setShowIssue]    = useState(false);
+  const [issueTarget,  setIssueTarget]  = useState<any>(null);  // the stock row being issued
+  const [issueQty,     setIssueQty]     = useState('');
+  const [issueNotes,   setIssueNotes]   = useState('');
   const [materialSearch, setMaterialSearch] = useState('');
   const [receiptForm, setReceiptForm] = useState({
     materialId: '', materialName: '', transactionType: 'PO_Receipt',
@@ -74,6 +78,32 @@ export default function InventoryPage() {
     }
     return Object.values(map);
   })();
+
+  const issueMutation = useMutation({
+    mutationFn: (data: any) => {
+      // Validate balance
+      if (Number(issueQty) > (issueTarget?.balance ?? 0)) {
+        throw new Error(`Only ${issueTarget?.balance} ${issueTarget?.unit || ''} available`);
+      }
+      return api.post('/inventory/stock-entry', null, {
+        params: {
+          materialId: data.materialId,
+          projectId,
+          type:       'Task_Issue',
+          qty:        Number(issueQty),
+          notes:      issueNotes || undefined,
+        }
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['stock-ledger'] });
+      setShowIssue(false);
+      setIssueQty(''); setIssueNotes(''); setIssueTarget(null);
+      import('react-hot-toast').then(({ default: toast }) => toast.success('Material issued — balance updated'));
+    },
+    onError: (e: any) => import('react-hot-toast').then(({ default: toast }) =>
+      toast.error(e.message || e.response?.data?.message || 'Failed to issue material')),
+  });
 
   const receiptMutation = useMutation({
     mutationFn: (data: any) => api.post('/inventory/stock-entry', null, {
@@ -185,7 +215,7 @@ export default function InventoryPage() {
                 <th className="text-right">Received</th>
                 <th className="text-right">Issued</th>
                 <th className="text-right">Balance</th>
-                <th>Status</th>
+                <th>Status</th><th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -466,5 +496,67 @@ export default function InventoryPage() {
         </div>
       )}
     </div>
+      {/* ── Issue Material Modal (TC-INV-005, TC-INV-006) ── */}
+      {showIssue && issueTarget && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowIssue(false)}>
+          <div className="modal max-w-md w-full">
+            <div className="modal-header">
+              <h2 className="font-semibold">Issue Material</h2>
+              <button className="modal-close" onClick={() => setShowIssue(false)}>✕</button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="p-3 rounded-lg" style={{background:'var(--bg-secondary)'}}>
+                <p className="text-sm font-medium">{issueTarget.materialName}</p>
+                <p className="text-xs mt-1" style={{color:'var(--text-secondary)'}}>
+                  Available balance: <strong style={{color: issueTarget.balance <= 0 ? 'var(--primary)' : '#16A34A'}}>
+                    {issueTarget.balance} {issueTarget.unit}
+                  </strong>
+                </p>
+              </div>
+              {issueTarget.balance <= 0 && (
+                <div className="p-3 rounded-lg text-sm" style={{background:'var(--primary-light)', color:'var(--primary)'}}>
+                  ⚠ No stock available to issue
+                </div>
+              )}
+              <div className="form-group">
+                <label className="form-label">Quantity to Issue *</label>
+                <input
+                  type="number" className="form-input"
+                  placeholder={`Max: ${issueTarget.balance} ${issueTarget.unit}`}
+                  min="0.001" max={issueTarget.balance} step="0.001"
+                  value={issueQty}
+                  onChange={e => setIssueQty(e.target.value)}
+                />
+                {issueQty && Number(issueQty) > issueTarget.balance && (
+                  <p className="input-error">
+                    ⚠ Only {issueTarget.balance} {issueTarget.unit} available — cannot issue {issueQty}
+                  </p>
+                )}
+              </div>
+              <div className="form-group">
+                <label className="form-label">Notes / Task Reference</label>
+                <input className="form-input" placeholder="e.g. Issued to Foundation Works - Task #12"
+                  value={issueNotes} onChange={e => setIssueNotes(e.target.value)} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowIssue(false)}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={
+                  !issueQty ||
+                  Number(issueQty) <= 0 ||
+                  Number(issueQty) > issueTarget.balance ||
+                  issueMutation.isPending
+                }
+                onClick={() => issueMutation.mutate({ materialId: issueTarget.materialId })}
+              >
+                {issueMutation.isPending ? 'Processing…' : `Issue ${issueQty || '0'} ${issueTarget.unit}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   );
 }
