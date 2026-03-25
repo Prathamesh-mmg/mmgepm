@@ -77,6 +77,20 @@ export default function BudgetPage() {
     enabled:  !!selectedLine?.id && tab === 'expenditures',
   });
 
+  const [budgetForm, setBudgetForm] = useState({ totalAmount: '', currency: 'USD', notes: '' });
+
+  const createBudgetMutation = useMutation({
+    mutationFn: (data: any) => api.post('/budget', data),
+    onSuccess: (res) => {
+      toast.success('Budget created successfully');
+      qc.invalidateQueries({ queryKey: ['budgets', projectId] });
+      setShowCB(false);
+      setBudgetForm({ totalAmount: '', currency: 'USD', notes: '' });
+      if (res.data) setSelBudget(res.data);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || e.response?.data?.inner || 'Failed to create budget'),
+  });
+
   const stateMutation = useMutation({
     mutationFn: ({ id, newState }: { id:string; newState:string }) =>
       api.post(`/budget/${id}/state`, { newState }),
@@ -96,6 +110,7 @@ export default function BudgetPage() {
     onSuccess: () => {
       toast.success('Line item added');
       qc.invalidateQueries({ queryKey:['budget-lines'] });
+      qc.invalidateQueries({ queryKey:['budgets', projectId] });
       setShowAL(false);
       setLineForm({ wbsCode:'', category:'Material', subCategory:'', area:'', detail:'', budgetedAmount:'' });
     },
@@ -110,6 +125,7 @@ export default function BudgetPage() {
       toast.success('Commitment recorded');
       qc.invalidateQueries({ queryKey:['commitments', selectedLine?.id] });
       qc.invalidateQueries({ queryKey:['budget-lines'] });
+      qc.invalidateQueries({ queryKey:['budgets', projectId] });
       setShowAC(false);
       setCommitForm({ commitmentDate: format(new Date(),'yyyy-MM-dd'), amount:'', notes:'' });
     },
@@ -124,6 +140,8 @@ export default function BudgetPage() {
       toast.success('Expenditure recorded');
       qc.invalidateQueries({ queryKey:['expenditures', selectedLine?.id] });
       qc.invalidateQueries({ queryKey:['budget-lines'] });
+      qc.invalidateQueries({ queryKey:['budgets', projectId] });
+      qc.invalidateQueries({ queryKey:['budget-dashboard', projectId] });
       setShowAE(false);
       setExpForm({ paymentDate: format(new Date(),'yyyy-MM-dd'), paymentAmount:'', transactionRef:'', notes:'' });
     },
@@ -242,6 +260,35 @@ export default function BudgetPage() {
                       </div>
                     ))}
                   </div>
+
+                  {/* TC-BUD-009/010: Utilization bar */}
+                  {totalBudgeted > 0 && (
+                    <div className="card p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold">Budget Utilization</span>
+                        <span className={clsx('text-sm font-bold',
+                          (totalExpended/totalBudgeted*100) > 80 ? 'text-red-600' : 'text-green-600')}>
+                          {((totalExpended/totalBudgeted)*100).toFixed(1)}%
+                          {(totalExpended/totalBudgeted*100) > 80 && (
+                            <span className="ml-2 text-xs badge-red">⚠ Over 80%</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="h-4 rounded-full overflow-hidden" style={{background:'var(--bg-secondary)'}}>
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.min(100,(totalExpended/totalBudgeted)*100).toFixed(1)}%`,
+                            background: (totalExpended/totalBudgeted*100) > 80 ? '#EF4444' : '#16A34A',
+                          }}
+                        />
+                      </div>
+                      <div className="flex justify-between mt-1 text-xs" style={{color:'var(--text-secondary)'}}>
+                        <span>Expended: ${totalExpended.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+                        <span>Budget: ${totalBudgeted.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+                      </div>
+                    </div>
+                  )}
 
                   {lineList.length > 0 && (
                     <div className="card">
@@ -375,6 +422,7 @@ export default function BudgetPage() {
                             <th className="text-right">Committed</th>
                             <th className="text-right">Expended</th>
                             <th className="text-right">Balance</th>
+                            <th className="text-right">Variance</th>
                             <th></th>
                           </tr>
                         </thead>
@@ -391,6 +439,10 @@ export default function BudgetPage() {
                               <td className="text-right text-red-500">${(l.expendedAmount||0).toLocaleString()}</td>
                               <td className={clsx('text-right font-bold', (l.balanceByPayment||0)<0 ? 'text-red-600' : 'text-green-600')}>
                                 ${(l.balanceByPayment||0).toLocaleString()}
+                              </td>
+                              <td className={clsx('text-right font-semibold',
+                                ((l.budgetedAmount||0)-(l.expendedAmount||0)) < 0 ? 'text-red-600' : 'text-green-600')}>
+                                ${((l.budgetedAmount||0)-(l.expendedAmount||0)).toLocaleString()}
                               </td>
                               <td>
                                 <button onClick={() => { setSelLine(l); setTab('committed'); }}
@@ -576,7 +628,7 @@ export default function BudgetPage() {
                           <div className="flex gap-2 mt-3 justify-end">
                             <button onClick={() => setShowAE(false)} className="btn-ghost text-sm">Cancel</button>
                             <button onClick={() => addExpMutation.mutate()}
-                              disabled={!expForm.paymentAmount || !expForm.transactionRef || addExpMutation.isPending}
+                              disabled={!expForm.paymentAmount || Number(expForm.paymentAmount) <= 0 || !expForm.transactionRef || addExpMutation.isPending}
                               className="btn-primary text-sm">
                               {addExpMutation.isPending ? 'Recording...' : 'Record Payment'}
                             </button>
@@ -636,5 +688,57 @@ export default function BudgetPage() {
         </>
       )}
     </div>
+      {/* ── Create Budget Modal ── */}
+      {showCreateBudget && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCB(false)}>
+          <div className="modal max-w-md w-full">
+            <div className="modal-header">
+              <h2 className="font-semibold text-base">Create Project Budget</h2>
+              <button className="modal-close" onClick={() => setShowCB(false)}>✕</button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="form-group">
+                <label className="form-label">Total Approved Budget *</label>
+                <input
+                  type="number" className="form-input" placeholder="e.g. 500000"
+                  value={budgetForm.totalAmount}
+                  onChange={e => setBudgetForm(f => ({...f, totalAmount: e.target.value}))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Currency</label>
+                <select className="form-select"
+                  value={budgetForm.currency}
+                  onChange={e => setBudgetForm(f => ({...f, currency: e.target.value}))}>
+                  <option>USD</option><option>TZS</option><option>KES</option>
+                  <option>ZMW</option><option>UGX</option><option>AED</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Notes</label>
+                <textarea className="form-input" rows={2} placeholder="Budget notes or version description..."
+                  value={budgetForm.notes}
+                  onChange={e => setBudgetForm(f => ({...f, notes: e.target.value}))} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowCB(false)}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={!budgetForm.totalAmount || createBudgetMutation.isPending}
+                onClick={() => createBudgetMutation.mutate({
+                  projectId,
+                  totalAmount: Number(budgetForm.totalAmount),
+                  currency: budgetForm.currency,
+                  notes: budgetForm.notes || null,
+                })}
+              >
+                {createBudgetMutation.isPending ? 'Creating…' : 'Create Budget'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   );
 }

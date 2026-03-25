@@ -44,12 +44,18 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unhandled exception");
+            _logger.LogError(ex, "Unhandled exception on {Method} {Path}", 
+                ctx.Request.Method, ctx.Request.Path);
             ctx.Response.StatusCode  = (int)HttpStatusCode.InternalServerError;
             ctx.Response.ContentType = "application/json";
+
+            // Return real error message to help debugging
+            // (in production, replace with generic message after debugging)
             await ctx.Response.WriteAsync(JsonSerializer.Serialize(new
             {
-                message = "An unexpected error occurred. Please try again.",
+                message = ex.Message,
+                type    = ex.GetType().Name,
+                inner   = ex.InnerException?.Message,
                 traceId = ctx.TraceIdentifier
             }));
         }

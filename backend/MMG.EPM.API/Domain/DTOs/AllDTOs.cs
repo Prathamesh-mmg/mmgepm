@@ -511,3 +511,18 @@ public record CreateBudgetLineItemRequest(
     Guid ProjectBudgetId, string? WbsCode,
     string Category, string? SubCategory,
     string? Area, string? Detail, decimal BudgetedAmount);
+
+public record CreateSiteTransferRequest(Guid MaterialId, Guid FromProjectId, Guid ToProjectId, decimal Quantity, string? Notes, DateTime? TransferDate);
+
+public record CreateResourceRequest(
+    string Name, string? Code,
+    Guid? ResourceTypeId,
+    decimal? CostPerHour, decimal? CostPerDay,
+    string? Currency, string? Notes,
+    string? Make, string? Model, string? SerialNumber);
+
+public record UpdateResourceStatusRequest(string Status);
+
+public record UpdateProjectProgressRequest(decimal Progress);
+
+public record DeployResourceRequest(Guid ResourceId, Guid ProjectId, DateTime? DeployedFrom);

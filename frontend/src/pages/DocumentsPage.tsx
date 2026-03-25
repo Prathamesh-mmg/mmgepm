@@ -47,6 +47,10 @@ export default function DocumentsPage() {
   const [selectedDrawing, setDrawing] = useState<any>(null);
   const [showVersions, setVersions]     = useState(false);
   const [showDrawingForm, setShowDrawingForm] = useState(false);
+  const [showReviseForm, setShowReviseForm] = useState(false);
+  const [reviseForm, setReviseForm]         = useState({ revision: '', notes: '', file: null as File|null });
+  const [showCRForm, setShowCRForm] = useState(false);
+  const [crForm, setCRForm] = useState({ title: '', description: '', reason: '', costImpact: '', scheduleDays: '' });
   const [selectedCR, setCR]           = useState<any>(null);
   const [crAdvanceNote, setCrNote]    = useState('');
   const [drawingForm, setDrawingForm] = useState({
@@ -117,9 +121,12 @@ export default function DocumentsPage() {
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => {
+      if (!projectId) { throw new Error('Please select a project first'); }
       const fd = new FormData();
       fd.append('file', file);
-      if (projectId) fd.append('projectId', projectId);
+      fd.append('projectId', projectId);
+      fd.append('title', file.name.replace(/\.[^.]+$/, ''));  // filename without extension as title
+      fd.append('documentType', 'General');
       if (selectedFolder) fd.append('folderId', selectedFolder);
       return api.post('/documents/upload', fd, { headers:{ 'Content-Type':'multipart/form-data' } });
     },
@@ -132,14 +139,16 @@ export default function DocumentsPage() {
   const createDrawingMutation = useMutation({
     mutationFn: () => {
       const fd = new FormData();
-      fd.append('name', drawingForm.name);
-      fd.append('category', drawingForm.category);
-      fd.append('revision', drawingForm.revision);
-      fd.append('receivedFrom', drawingForm.receivedFrom);
-      fd.append('remarks', drawingForm.remarks);
-      if (projectId) fd.append('projectId', projectId);
+      if (!projectId) throw new Error('Select a project first');
+      fd.append('projectId', projectId);
+      fd.append('drawingNumber', drawingForm.name);
+      fd.append('title', drawingForm.name);
+      fd.append('discipline', drawingForm.category);
+      fd.append('revision', drawingForm.revision || 'A');
+      fd.append('status', 'IFC');
+      if (drawingForm.remarks) fd.append('scale', drawingForm.remarks);
       if (drawingForm.file) fd.append('file', drawingForm.file);
-      return api.post('/documents/drawings', fd, { headers:{'Content-Type':'multipart/form-data'} });
+      return api.post('/drawings', fd, { headers:{'Content-Type':'multipart/form-data'} });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey:['drawings'] });
@@ -161,7 +170,7 @@ export default function DocumentsPage() {
 
   const advanceCRMutation = useMutation({
     mutationFn: ({ id, toState }: { id:string; toState:string }) =>
-      api.post(`/change-requests/${id}/lifecycle/advance`, { toState, comments: crAdvanceNote }),
+      api.patch(`/documents/change-requests/${id}/status`, { status: toState, comments: crAdvanceNote }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey:['changes'] });
       qc.invalidateQueries({ queryKey:['cr-log'] });
@@ -169,6 +178,38 @@ export default function DocumentsPage() {
       setCrNote('');
     },
     onError: (e:any) => toast.error(e.response?.data?.message || 'Failed'),
+  });
+
+  const reviseMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedDrawing) throw new Error('No drawing selected');
+      const fd = new FormData();
+      fd.append('revision', reviseForm.revision || 'R1');
+      fd.append('notes', reviseForm.notes || '');
+      fd.append('status', 'Current');
+      if (reviseForm.file) fd.append('file', reviseForm.file);
+      return api.post(`/drawings/${selectedDrawing.id}/versions`, fd,
+        { headers: { 'Content-Type': 'multipart/form-data' } });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['drawings'] });
+      qc.invalidateQueries({ queryKey: ['drawing-versions'] });
+      toast.success('Drawing revised — new version created');
+      setShowReviseForm(false);
+      setReviseForm({ revision: '', notes: '', file: null });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to revise drawing'),
+  });
+
+  const createCRMutation = useMutation({
+    mutationFn: (data: any) => api.post('/documents/change-requests', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['changes'] });
+      toast.success('Change Request created');
+      setShowCRForm(false);
+      setCRForm({ title: '', description: '', reason: '', costImpact: '', scheduleDays: '' });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to create CR'),
   });
 
   const canManage = hasRole('Admin') || hasRole('Project Manager') || hasRole('Planning Engineer');
@@ -433,6 +474,14 @@ export default function DocumentsPage() {
                             className="p-1.5 rounded hover:bg-blue-50 text-gray-500 hover:text-blue-600" title="Version history">
                             <GitBranch className="w-3.5 h-3.5" />
                           </button>
+                          {canManage && (
+                            <button onClick={() => { setDrawing(d); setReviseForm({ revision: '', notes: '', file: null }); setShowReviseForm(true); }}
+                              className="text-xs px-2 py-1 rounded font-medium transition-colors"
+                              style={{background:'var(--primary-light)', color:'var(--primary)'}}
+                              title="Revise drawing">
+                              Revise
+                            </button>
+                          )}
                           {/* DM-EXT-2: release */}
                           {canManage && (d.state === 'Release Drawings' || !d.state) && (
                             <button onClick={() => releaseDrawingMutation.mutate(d.id)}
@@ -508,7 +557,7 @@ export default function DocumentsPage() {
             <div className="card-header">
               <span className="font-medium text-sm">Change Requests</span>
               {canManage && (
-                <button className="btn-primary btn-sm flex items-center gap-1">
+                <button className="btn-primary btn-sm flex items-center gap-1" onClick={() => setShowCRForm(true)}>
                   <Plus className="w-3.5 h-3.5" /> New CR
                 </button>
               )}
@@ -615,5 +664,110 @@ export default function DocumentsPage() {
         </div>
       )}
     </div>
+      {/* ── Create Change Request Modal ── */}
+      {showCRForm && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCRForm(false)}>
+          <div className="modal max-w-lg w-full">
+            <div className="modal-header">
+              <h2 className="font-semibold text-base">New Change Request</h2>
+              <button className="modal-close" onClick={() => setShowCRForm(false)}>✕</button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="form-group">
+                <label className="form-label">Title *</label>
+                <input className="form-input" placeholder="Change request title"
+                  value={crForm.title} onChange={e => setCRForm(f => ({...f, title: e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                <textarea className="form-input" rows={2} placeholder="Describe the change..."
+                  value={crForm.description} onChange={e => setCRForm(f => ({...f, description: e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Reason / Justification</label>
+                <textarea className="form-input" rows={2} placeholder="Why is this change needed?"
+                  value={crForm.reason} onChange={e => setCRForm(f => ({...f, reason: e.target.value}))} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="form-group">
+                  <label className="form-label">Cost Impact (USD)</label>
+                  <input type="number" className="form-input" placeholder="0.00"
+                    value={crForm.costImpact} onChange={e => setCRForm(f => ({...f, costImpact: e.target.value}))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Schedule Impact (days)</label>
+                  <input type="number" className="form-input" placeholder="0"
+                    value={crForm.scheduleDays} onChange={e => setCRForm(f => ({...f, scheduleDays: e.target.value}))} />
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowCRForm(false)}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={!crForm.title || createCRMutation.isPending}
+                onClick={() => createCRMutation.mutate({
+                  projectId: projectId,
+                  title: crForm.title,
+                  description: crForm.description || null,
+                  reason: crForm.reason || null,
+                  costImpact: crForm.costImpact ? Number(crForm.costImpact) : null,
+                  scheduleImpactDays: crForm.scheduleDays ? Number(crForm.scheduleDays) : null,
+                })}
+              >
+                {createCRMutation.isPending ? 'Creating…' : 'Create CR'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Revise Drawing Modal (TC-DOC-005) ── */}
+      {showReviseForm && selectedDrawing && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReviseForm(false)}>
+          <div className="modal max-w-md w-full">
+            <div className="modal-header">
+              <div>
+                <h2 className="font-semibold">Revise Drawing</h2>
+                <p className="text-xs mt-0.5" style={{color:'var(--text-secondary)'}}>
+                  {selectedDrawing.drawingNumber || selectedDrawing.name} — Current: {selectedDrawing.revision}
+                </p>
+              </div>
+              <button className="modal-close" onClick={() => setShowReviseForm(false)}>✕</button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="form-group">
+                <label className="form-label">New Revision Code *</label>
+                <input className="form-input" placeholder="e.g. R1, R2, Rev-A, Rev-B"
+                  value={reviseForm.revision}
+                  onChange={e => setReviseForm(f => ({...f, revision: e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Revision Notes</label>
+                <textarea className="form-input" rows={3}
+                  placeholder="What changed in this revision?"
+                  value={reviseForm.notes}
+                  onChange={e => setReviseForm(f => ({...f, notes: e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Upload Revised File</label>
+                <input type="file" className="form-input" style={{height:'auto', padding:'8px'}}
+                  onChange={e => setReviseForm(f => ({...f, file: e.target.files?.[0] || null}))} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowReviseForm(false)}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={!reviseForm.revision || reviseMutation.isPending}
+                onClick={() => reviseMutation.mutate()}
+              >
+                {reviseMutation.isPending ? 'Saving…' : 'Save Revision'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   );
 }

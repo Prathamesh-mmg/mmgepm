@@ -1,43 +1,37 @@
-// src/pages/ProcurementPage.tsx
+// src/pages/ProcurementPage.tsx — Full 9-stage MR workflow, detail panel, PO tab
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { ShoppingCart, Plus, ChevronRight, Loader2, X, ArrowRight } from 'lucide-react';
+import { ShoppingCart, Plus, ChevronRight, Loader2, X, ArrowRight, Trash2, CheckCircle } from 'lucide-react';
 import { procurementApi, projectsApi, api } from '../lib/api';
 import { format } from 'date-fns';
 import clsx from 'clsx';
 
-const MR_STATUS: Record<number, { label: string; cls: string; next?: string }> = {
-  1: { label: 'Draft',             cls: 'badge-gray',   next: 'Submit'           },
-  2: { label: 'Submitted',         cls: 'badge-yellow', next: 'PM Approve'       },
-  3: { label: 'PM Approved',       cls: 'badge-blue',   next: 'Send to Purchase' },
-  4: { label: 'Sent to Purchase',  cls: 'badge-blue',   next: 'Mark Quotation'   },
-  5: { label: 'Quotation Received',cls: 'badge-blue',   next: 'Create PO'        },
-  6: { label: 'PO Generated',      cls: 'badge-green',  next: 'Mark Delivered'   },
-  7: { label: 'Part Delivered',    cls: 'badge-orange', next: 'Full Delivery'     },
-  8: { label: 'Delivered',         cls: 'badge-green',  next: 'Close'            },
-  9: { label: 'Closed',            cls: 'badge-gray'                             },
+// ── 9-stage workflow definition ───────────────────────────────
+const STAGES: Record<string, { label: string; badge: string; action?: string; actionLabel?: string }> = {
+  Draft:             { label: 'Draft',              badge: 'badge-gray',   action: 'Submit',            actionLabel: 'Submit MR'          },
+  Submitted:         { label: 'Submitted',           badge: 'badge-yellow', action: 'PMApprove',         actionLabel: 'PM Approve'         },
+  PMApproved:        { label: 'PM Approved',         badge: 'badge-blue',   action: 'SendToPurchase',    actionLabel: 'Send to Purchase'   },
+  SentToPurchase:    { label: 'Sent to Purchase',    badge: 'badge-blue',   action: 'QuotationReceived', actionLabel: 'Mark Quotation Rcvd'},
+  QuotationReceived: { label: 'Quotation Received',  badge: 'badge-blue',   action: 'GeneratePO',        actionLabel: 'Generate PO'        },
+  POGenerated:       { label: 'PO Generated',        badge: 'badge-green',  action: 'PartDelivery',      actionLabel: 'Mark Part Delivered'},
+  PartDelivered:     { label: 'Part Delivered',      badge: 'badge-orange', action: 'FullDelivery',      actionLabel: 'Mark Delivered'     },
+  Delivered:         { label: 'Delivered',           badge: 'badge-green',  action: 'Close',             actionLabel: 'Close MR'           },
+  Closed:            { label: 'Closed',              badge: 'badge-gray'                                                                   },
 };
-const getNextAction = (status: string): string => {
-  const flow: Record<string, string> = {
-    Draft: 'Submit', Submitted: 'PMApprove', PMApproved: 'SendToPurchase',
-    SentToPurchase: 'QuotationReceived', QuotationReceived: 'GeneratePO',
-    POGenerated: 'PartDelivery', PartDelivered: 'FullDelivery', Delivered: 'Close',
-  };
-  return flow[status] ?? 'Close';
+const STAGE_ORDER = ['Draft','Submitted','PMApproved','SentToPurchase','QuotationReceived','POGenerated','PartDelivered','Delivered','Closed'];
+
+const PRIORITY_BADGE: Record<string, string> = {
+  Low: 'badge-gray', Normal: 'badge-blue', High: 'badge-orange', Urgent: 'badge-red',
 };
-
-
 
 export default function ProcurementPage() {
-  const [subTab, setSubTab] = useState<'mr' | 'po' | 'quotes' | 'negotiate'>('mr');
-  const [showCreate, setShowCreate] = useState(false);
-  const [selectedMR, setSelectedMR] = useState<any>(null);
-  const [selectedMRForQuotes, setMRForQuotes] = useState<string>('');
-  const [newQuote, setNewQuote] = useState({ vendorId:'', unitPrice:'', leadDays:'', paymentTerms:'' });
-  const [newNeg, setNewNeg] = useState({ mrId:'', vendorId:'', price:'', initial:'', notes:'' });
   const qc = useQueryClient();
+  const [subTab,      setSubTab]      = useState<'mr' | 'po'>('mr');
+  const [showCreate,  setShowCreate]  = useState(false);
+  const [selectedMR,  setSelectedMR]  = useState<any>(null);
+  const [filterStatus,setFilterStatus]= useState('');
 
   const { data: projects } = useQuery({
     queryKey: ['projects-list'],
@@ -45,56 +39,9 @@ export default function ProcurementPage() {
   });
 
   const { data: mrs, isLoading: mrsLoading } = useQuery({
-    queryKey: ['material-requests', subTab],
-    queryFn:  () => procurementApi.getMRs().then(r => r.data),
+    queryKey: ['material-requests'],
+    queryFn:  () => procurementApi.getMRs({ pageSize: 100 }).then(r => r.data),
     enabled:  subTab === 'mr',
-  });
-
-  const { data: vendors } = useQuery({
-    queryKey: ['vendors'],
-    queryFn: () => api.get('/procurement/vendors').then(r => r.data),
-  });
-
-  const { data: quotes } = useQuery({
-    queryKey: ['quotes', selectedMRForQuotes],
-    queryFn: () => api.get('/quotations', { params: { mrId: selectedMRForQuotes } }).then(r => r.data),
-    enabled: subTab === 'quotes' && !!selectedMRForQuotes,
-  });
-
-  const { data: negotiations } = useQuery({
-    queryKey: ['negotiations', selectedMRForQuotes],
-    queryFn: () => api.get('/negotiations', { params: { mrId: selectedMRForQuotes } }).then(r => r.data),
-    enabled: subTab === 'negotiate' && !!selectedMRForQuotes,
-  });
-
-  const addQuoteMutation = useMutation({
-    mutationFn: () => api.post('/quotations', {
-      materialRequestId: selectedMRForQuotes,
-      vendorId: newQuote.vendorId,
-      unitPrice: Number(newQuote.unitPrice),
-      leadTimeDays: newQuote.leadDays ? Number(newQuote.leadDays) : undefined,
-      paymentTerms: newQuote.paymentTerms || undefined,
-    }),
-    onSuccess: () => { toast.success('Quotation added'); qc.invalidateQueries({ queryKey:['quotes'] }); setNewQuote({vendorId:'',unitPrice:'',leadDays:'',paymentTerms:''}); },
-    onError: (e:any) => toast.error(e.response?.data?.message || 'Failed'),
-  });
-
-  const selectVendorMutation = useMutation({
-    mutationFn: ({ quoteId, justification }: { quoteId:string; justification?:string }) =>
-      api.post(`/quotations/${quoteId}/select`, { justification }),
-    onSuccess: () => { toast.success('Vendor selected'); qc.invalidateQueries({ queryKey:['quotes'] }); },
-  });
-
-  const addNegMutation = useMutation({
-    mutationFn: () => api.post('/negotiations', {
-      materialRequestId: newNeg.mrId || selectedMRForQuotes,
-      vendorId: newNeg.vendorId,
-      negotiatedPrice: Number(newNeg.price),
-      initialPrice: newNeg.initial ? Number(newNeg.initial) : undefined,
-      notes: newNeg.notes || undefined,
-    }),
-    onSuccess: () => { toast.success('Negotiation round logged'); qc.invalidateQueries({ queryKey:['negotiations'] }); setNewNeg({mrId:'',vendorId:'',price:'',initial:'',notes:''}); },
-    onError: (e:any) => toast.error(e.response?.data?.message || 'Failed'),
   });
 
   const { data: pos, isLoading: posLoading } = useQuery({
@@ -105,31 +52,67 @@ export default function ProcurementPage() {
 
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<any>();
 
+  // Create MR mutation
   const createMutation = useMutation({
-    mutationFn: (data: any) => procurementApi.createMR(data),
+    mutationFn: (d: any) => procurementApi.createMR({
+      projectId:    d.projectId,
+      title:        d.description,
+      justification:d.specifications || null,
+      priority:     d.priority || 'Normal',
+      requiredDate: d.requiredByDate || null,
+      items: [{ description: d.description, unit: 'Nos', quantity: 1, estimatedCost: null }],
+    }),
     onSuccess: () => {
-      toast.success('Material request created');
+      toast.success('Material Request created — status: Draft');
       qc.invalidateQueries({ queryKey: ['material-requests'] });
       setShowCreate(false); reset();
     },
-    onError: () => toast.error('Failed to create request'),
+    onError: (e: any) => toast.error(e.response?.data?.message || e.response?.data?.inner || 'Failed to create MR'),
   });
 
-  const statusMutation = useMutation({
-    mutationFn: ({ id, status }: any) => procurementApi.advanceMR(id, status),
+  // Advance MR status mutation
+  const advanceMutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: string }) =>
+      procurementApi.advanceMR(id, action),
+    onSuccess: (res) => {
+      toast.success(`MR advanced to: ${STAGES[res.data?.status]?.label || 'next stage'}`);
+      qc.invalidateQueries({ queryKey: ['material-requests'] });
+      // Refresh selected MR with updated data
+      if (selectedMR) setSelectedMR((prev: any) => ({ ...prev, ...res.data }));
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to advance MR'),
+  });
+
+  // Delete MR mutation
+  const deleteMRMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/procurement/material-requests/${id}`),
     onSuccess: () => {
-      toast.success('Status updated');
+      toast.success('Material Request deleted');
       qc.invalidateQueries({ queryKey: ['material-requests'] });
       setSelectedMR(null);
     },
+    onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to delete MR'),
   });
+
+  const mrList: any[] = Array.isArray(mrs) ? mrs : (mrs as any)?.items ?? [];
+  const poList: any[] = Array.isArray(pos) ? pos : (pos as any)?.items ?? [];
+
+  // Filter MRs
+  const filteredMRs = filterStatus
+    ? mrList.filter((mr: any) => mr.status === filterStatus)
+    : mrList;
+
+  // Current stage index for stepper
+  const currentStageIdx = (status: string) => STAGE_ORDER.indexOf(status);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Procurement Tracker</h1>
-          <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+          <p className="text-sm mt-0.5" style={{color:'var(--text-secondary)'}}>
             Track material requests through the 9-stage procurement workflow
           </p>
         </div>
@@ -138,89 +121,142 @@ export default function ProcurementPage() {
         </button>
       </div>
 
-      {/* Workflow legend */}
-      <div className="card p-4">
-        <p className="text-xs font-medium text-[var(--text-secondary)] mb-3 uppercase tracking-wider">Procurement Workflow</p>
+      {/* 9-stage workflow banner */}
+      <div className="card" style={{padding:'12px 16px'}}>
+        <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{color:'var(--text-secondary)'}}>
+          Procurement Workflow — 9 Stages
+        </p>
         <div className="flex flex-wrap items-center gap-1">
-          {Object.entries(MR_STATUS).map(([id, s], idx) => (
-            <div key={id} className="flex items-center gap-1">
-              <span className={clsx(s.cls, 'text-[10px]')}>{s.label}</span>
-              {idx < 8 && <ArrowRight className="w-3 h-3 text-[var(--text-secondary)]" />}
+          {STAGE_ORDER.map((stage, idx) => (
+            <div key={stage} className="flex items-center gap-1">
+              <span className={clsx(STAGES[stage].badge, 'text-[10px] whitespace-nowrap')}>
+                {idx + 1}. {STAGES[stage].label}
+              </span>
+              {idx < 8 && <ArrowRight className="w-3 h-3 flex-shrink-0" style={{color:'var(--text-muted)'}} />}
             </div>
           ))}
         </div>
       </div>
 
+      {/* Tabs */}
       <div className="tabs">
         <button className={clsx('tab-item', subTab === 'mr' && 'active')} onClick={() => setSubTab('mr')}>
-          Material Requests {mrs?.length > 0 && `(${mrs.length})`}
+          Material Requests {mrList.length > 0 && `(${mrList.length})`}
         </button>
         <button className={clsx('tab-item', subTab === 'po' && 'active')} onClick={() => setSubTab('po')}>
-          Purchase Orders {pos?.length > 0 && `(${pos.length})`}
+          Purchase Orders {poList.length > 0 && `(${poList.length})`}
         </button>
       </div>
 
+      {/* MR Tab */}
       {subTab === 'mr' && (
-        <div className="table-wrap">
-          <table className="table table-clickable">
-            <thead>
-              <tr>
-                <th>MR Number</th><th>Project</th><th>Description</th>
-                <th>Priority</th><th>Requested By</th><th>Date</th><th>Status</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {mrsLoading
-                ? <tr><td colSpan={8} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--primary)]" /></td></tr>
-                : !mrs?.length
-                  ? <tr><td colSpan={8} className="text-center py-12 text-[var(--text-secondary)]">No material requests yet</td></tr>
-                  : mrs.map((mr: any) => (
-                    <tr key={mr.id} onClick={() => setSelectedMR(mr)}>
-                      <td className="font-mono text-xs font-medium">{mr.mrNumber}</td>
-                      <td className="text-sm">{mr.projectName}</td>
-                      <td className="text-sm max-w-52">
-                        <p className="truncate">{mr.description}</p>
-                      </td>
-                      <td>
-                        <span className={mr.priority === 'High' ? 'badge-red' : mr.priority === 'Medium' ? 'badge-yellow' : 'badge-gray'}>
-                          {mr.priority}
-                        </span>
-                      </td>
-                      <td className="text-sm">{mr.requestedByName}</td>
-                      <td className="text-xs text-[var(--text-secondary)]">
-                        {mr.requestDate ? format(new Date(mr.requestDate), 'dd MMM yyyy') : '—'}
-                      </td>
-                      <td><span className={MR_STATUS[mr.status]?.cls ?? 'badge-gray'}>{MR_STATUS[mr.status]?.label}</span></td>
-                      <td><ChevronRight className="w-4 h-4 text-[var(--text-secondary)]" /></td>
-                    </tr>
-                  ))
-              }
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Status filter */}
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium" style={{color:'var(--text-secondary)'}}>Filter by status:</label>
+            <select className="form-select w-48" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <option value="">All statuses</option>
+              {STAGE_ORDER.map(s => <option key={s} value={s}>{STAGES[s].label}</option>)}
+            </select>
+            {filterStatus && (
+              <button className="text-xs" style={{color:'var(--primary)'}} onClick={() => setFilterStatus('')}>Clear</button>
+            )}
+          </div>
+
+          <div className="table-wrap">
+            <table className="table table-clickable">
+              <thead>
+                <tr>
+                  <th>MR Number</th><th>Title</th><th>Project</th>
+                  <th>Priority</th><th>Required By</th><th>Status</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {mrsLoading
+                  ? <tr><td colSpan={7} className="text-center py-10">
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto" style={{color:'var(--primary)'}} />
+                    </td></tr>
+                  : !filteredMRs.length
+                    ? <tr><td colSpan={7} className="py-14 text-center">
+                        <div className="flex flex-col items-center gap-3">
+                          <ShoppingCart className="w-10 h-10 opacity-20" />
+                          <p style={{color:'var(--text-secondary)'}}>
+                            {filterStatus ? `No MRs with status "${STAGES[filterStatus]?.label}"` : 'No material requests yet'}
+                          </p>
+                          {!filterStatus && (
+                            <button className="btn-primary btn-sm" onClick={() => setShowCreate(true)}>
+                              <Plus className="w-4 h-4" /> Create First MR
+                            </button>
+                          )}
+                        </div>
+                      </td></tr>
+                    : filteredMRs.map((mr: any) => (
+                      <tr key={mr.id} onClick={() => setSelectedMR(mr)}>
+                        <td className="font-mono text-xs font-bold" style={{color:'var(--primary)'}}>{mr.mrNumber}</td>
+                        <td className="font-medium text-sm max-w-xs">
+                          <p className="truncate">{mr.title || mr.description}</p>
+                        </td>
+                        <td className="text-sm">{mr.projectName}</td>
+                        <td>
+                          <span className={clsx(PRIORITY_BADGE[mr.priority] || 'badge-gray', 'text-xs')}>
+                            {mr.priority}
+                          </span>
+                        </td>
+                        <td className="text-xs" style={{color:'var(--text-secondary)'}}>
+                          {mr.requiredDate ? format(new Date(mr.requiredDate), 'dd MMM yyyy') : '—'}
+                        </td>
+                        <td>
+                          <span className={clsx(STAGES[mr.status]?.badge || 'badge-gray', 'text-xs')}>
+                            {STAGES[mr.status]?.label || mr.status}
+                          </span>
+                        </td>
+                        <td><ChevronRight className="w-4 h-4" style={{color:'var(--text-muted)'}} /></td>
+                      </tr>
+                    ))
+                }
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
+      {/* PO Tab */}
       {subTab === 'po' && (
         <div className="table-wrap">
           <table className="table">
             <thead>
-              <tr><th>PO Number</th><th>Vendor</th><th>Project</th><th>Amount (USD)</th><th>Issued Date</th><th>Status</th></tr>
+              <tr>
+                <th>PO Number</th><th>Vendor</th><th>Project</th>
+                <th className="text-right">Total Amount</th><th>Currency</th>
+                <th>PO Date</th><th>Status</th>
+              </tr>
             </thead>
             <tbody>
               {posLoading
-                ? <tr><td colSpan={6} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--primary)]" /></td></tr>
-                : !pos?.length
-                  ? <tr><td colSpan={6} className="text-center py-12 text-[var(--text-secondary)]">No purchase orders yet</td></tr>
-                  : pos.map((po: any) => (
-                    <tr key={po.poId}>
-                      <td className="font-mono text-xs font-medium">{po.poNumber}</td>
-                      <td className="text-sm">{po.vendorName}</td>
+                ? <tr><td colSpan={7} className="text-center py-10">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto" style={{color:'var(--primary)'}} />
+                  </td></tr>
+                : !poList.length
+                  ? <tr><td colSpan={7} className="py-12 text-center" style={{color:'var(--text-secondary)'}}>
+                      No purchase orders yet. MRs must reach "Quotation Received" stage to generate POs.
+                    </td></tr>
+                  : poList.map((po: any) => (
+                    <tr key={po.id}>
+                      <td className="font-mono text-xs font-bold" style={{color:'var(--primary)'}}>{po.poNumber}</td>
+                      <td className="font-medium">{po.vendorName}</td>
                       <td className="text-sm">{po.projectName}</td>
-                      <td className="font-medium">${(po.totalAmount ?? 0).toLocaleString()}</td>
-                      <td className="text-xs text-[var(--text-secondary)]">
-                        {po.issueDate ? format(new Date(po.issueDate), 'dd MMM yyyy') : '—'}
+                      <td className="text-right font-bold">{po.totalAmount?.toLocaleString()}</td>
+                      <td className="text-sm">{po.currency}</td>
+                      <td className="text-xs" style={{color:'var(--text-secondary)'}}>
+                        {po.poDate ? format(new Date(po.poDate), 'dd MMM yyyy') : '—'}
                       </td>
-                      <td><span className="badge-blue">{po.statusLabel}</span></td>
+                      <td>
+                        <span className={clsx(
+                          po.status === 'FullDelivery' || po.status === 'Closed' ? 'badge-green' :
+                          po.status === 'PartialDelivery' ? 'badge-orange' : 'badge-blue', 'text-xs')}>
+                          {po.status}
+                        </span>
+                      </td>
                     </tr>
                   ))
               }
@@ -229,255 +265,53 @@ export default function ProcurementPage() {
         </div>
       )}
 
-      {/* Quotation Comparison Tab */}
-      {subTab === 'quotes' && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <select className="select flex-1 max-w-xs"
-              value={selectedMRForQuotes} onChange={e => setMRForQuotes(e.target.value)}>
-              <option value="">Select an MR to view/add quotations...</option>
-              {(mrs || []).map((mr: any) => (
-                <option key={mr.id} value={mr.id}>{mr.mrNumber} — {mr.title || 'MR'}</option>
-              ))}
-            </select>
-          </div>
-
-          {selectedMRForQuotes && (
-            <>
-              {/* Add quotation form */}
-              <div className="card p-4">
-                <p className="text-sm font-semibold text-gray-700 mb-3">Add Vendor Quotation</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div>
-                    <label className="text-xs text-gray-500">Vendor *</label>
-                    <select className="select w-full mt-1 text-sm"
-                      value={newQuote.vendorId} onChange={e => setNewQuote(q => ({...q, vendorId: e.target.value}))}>
-                      <option value="">Select vendor...</option>
-                      {((vendors as any[]) || []).map((v: any) => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">Unit Price (USD) *</label>
-                    <input type="number" className="input w-full mt-1 text-sm"
-                      placeholder="0.00" min="0" value={newQuote.unitPrice}
-                      onChange={e => setNewQuote(q => ({...q, unitPrice: e.target.value}))} />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">Lead Time (days)</label>
-                    <input type="number" className="input w-full mt-1 text-sm"
-                      placeholder="0" min="0" value={newQuote.leadDays}
-                      onChange={e => setNewQuote(q => ({...q, leadDays: e.target.value}))} />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">Payment Terms</label>
-                    <input className="input w-full mt-1 text-sm"
-                      placeholder="e.g. Net 30" value={newQuote.paymentTerms}
-                      onChange={e => setNewQuote(q => ({...q, paymentTerms: e.target.value}))} />
-                  </div>
-                </div>
-                <button className="btn-primary text-sm mt-3"
-                  disabled={!newQuote.vendorId || !newQuote.unitPrice || addQuoteMutation.isPending}
-                  onClick={() => addQuoteMutation.mutate()}>
-                  {addQuoteMutation.isPending ? 'Adding...' : 'Add Quotation'}
-                </button>
-              </div>
-
-              {/* Comparison table */}
-              {(quotes as any[] || []).length === 0 ? (
-                <div className="card p-8 text-center text-gray-400">
-                  No quotations yet for this MR. Add vendor quotes above.
-                </div>
-              ) : (
-                <div className="card overflow-hidden p-0">
-                  <div className="card-header">
-                    <span className="font-medium text-sm">Vendor Comparison</span>
-                    <span className="text-xs text-gray-400">⭐ = Recommended (lowest price)</span>
-                  </div>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Vendor</th>
-                        <th className="text-right">Unit Price</th>
-                        <th className="text-center">Lead Time</th>
-                        <th>Payment Terms</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(quotes as any[]).sort((a: any, b: any) => a.unitPrice - b.unitPrice).map((q: any) => (
-                        <tr key={q.id} className={q.isSelected ? 'bg-green-50' : q.isRecommended ? 'bg-[rgba(209,17,28,0.04)]' : ''}>
-                          <td className="font-medium">
-                            {q.isRecommended && <span className="text-yellow-500 mr-1">⭐</span>}
-                            {q.vendorName}
-                          </td>
-                          <td className="text-right font-bold text-gray-800">
-                            ${q.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className="text-center text-sm">{q.leadTimeDays ? `${q.leadTimeDays}d` : '—'}</td>
-                          <td className="text-sm text-gray-600">{q.paymentTerms || '—'}</td>
-                          <td>
-                            {q.isSelected
-                              ? <span className="badge badge-green text-xs">✓ Selected</span>
-                              : q.isRecommended
-                              ? <span className="badge badge-yellow text-xs">Recommended</span>
-                              : <span className="badge badge-gray text-xs">Pending</span>
-                            }
-                          </td>
-                          <td>
-                            {!q.isSelected && (
-                              <button
-                                onClick={() => {
-                                  const j = prompt('Justification for selecting this vendor (optional):') ?? '';
-                                  selectVendorMutation.mutate({ quoteId: q.id, justification: j });
-                                }}
-                                className="btn-primary btn-sm text-xs">
-                                Select
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Negotiations Tab */}
-      {subTab === 'negotiate' && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <select className="select flex-1 max-w-xs"
-              value={selectedMRForQuotes} onChange={e => setMRForQuotes(e.target.value)}>
-              <option value="">Select an MR...</option>
-              {(mrs || []).map((mr: any) => (
-                <option key={mr.id} value={mr.id}>{mr.mrNumber}</option>
-              ))}
-            </select>
-          </div>
-
-          {selectedMRForQuotes && (
-            <>
-              <div className="card p-4">
-                <p className="text-sm font-semibold text-gray-700 mb-3">Log Negotiation Round</p>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-xs text-gray-500">Vendor *</label>
-                    <select className="select w-full mt-1 text-sm"
-                      value={newNeg.vendorId} onChange={e => setNewNeg(n => ({...n, vendorId: e.target.value}))}>
-                      <option value="">Select vendor...</option>
-                      {((vendors as any[]) || []).map((v: any) => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">Initial Quote Price</label>
-                    <input type="number" className="input w-full mt-1 text-sm"
-                      placeholder="Original price" value={newNeg.initial}
-                      onChange={e => setNewNeg(n => ({...n, initial: e.target.value}))} />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">Negotiated Price *</label>
-                    <input type="number" className="input w-full mt-1 text-sm"
-                      placeholder="After negotiation" value={newNeg.price}
-                      onChange={e => setNewNeg(n => ({...n, price: e.target.value}))} />
-                  </div>
-                  <div className="col-span-2 md:col-span-3">
-                    <label className="text-xs text-gray-500">Notes</label>
-                    <input className="input w-full mt-1 text-sm"
-                      placeholder="Terms agreed, conditions..." value={newNeg.notes}
-                      onChange={e => setNewNeg(n => ({...n, notes: e.target.value}))} />
-                  </div>
-                </div>
-                <button className="btn-primary text-sm mt-3"
-                  disabled={!newNeg.vendorId || !newNeg.price || addNegMutation.isPending}
-                  onClick={() => addNegMutation.mutate()}>
-                  {addNegMutation.isPending ? 'Logging...' : 'Log Negotiation'}
-                </button>
-              </div>
-
-              {(negotiations as any[] || []).length === 0 ? (
-                <div className="card p-8 text-center text-gray-400">No negotiations logged yet</div>
-              ) : (
-                <div className="card overflow-hidden p-0">
-                  <table className="table">
-                    <thead>
-                      <tr><th>Vendor</th><th>Round</th><th>Initial Price</th><th>Negotiated</th><th>Saving</th><th>Notes</th><th>Logged By</th></tr>
-                    </thead>
-                    <tbody>
-                      {(negotiations as any[]).map((n: any) => (
-                        <tr key={n.id}>
-                          <td className="font-medium">{n.vendorName}</td>
-                          <td className="text-center"><span className="badge badge-blue text-xs">Round {n.round}</span></td>
-                          <td className="text-sm">{n.initialPrice ? `$${n.initialPrice.toLocaleString()}` : '—'}</td>
-                          <td className="font-medium text-blue-600">${n.negotiatedPrice.toLocaleString()}</td>
-                          <td>
-                            {n.saving != null && (
-                              <span className={n.saving > 0 ? 'text-green-600 font-medium' : 'text-red-500'}>
-                                {n.saving > 0 ? '-' : '+'} ${Math.abs(n.saving).toLocaleString()}
-                              </span>
-                            )}
-                          </td>
-                          <td className="text-sm text-gray-500 max-w-xs truncate">{n.notes || '—'}</td>
-                          <td className="text-xs text-gray-400">{n.loggedByName}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Create MR Modal */}
+      {/* ── Create MR Modal ── */}
       {showCreate && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
-          <div className="modal max-w-xl w-full">
+          <div className="modal max-w-lg w-full">
             <div className="modal-header">
-              <h2 className="font-semibold text-base">New Material Request</h2>
-              <button className="btn-icon btn-ghost" onClick={() => setShowCreate(false)}><X className="w-4 h-4" /></button>
+              <h2 className="font-semibold">New Material Request</h2>
+              <button className="modal-close" onClick={() => { setShowCreate(false); reset(); }}>✕</button>
             </div>
             <form onSubmit={handleSubmit(d => createMutation.mutate(d))}>
               <div className="modal-body grid grid-cols-2 gap-4">
-                <div className="input-group col-span-2">
-                  <label className="input-label">Project *</label>
-                  <select className="select" {...register('projectId', { valueAsNumber: true })}>
+                <div className="form-group col-span-2">
+                  <label className="form-label">Project *</label>
+                  <select className="form-select" {...register('projectId', { required: 'Project is required' })}>
                     <option value="">Select project…</option>
-                    {projects?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {(projects as any[] || []).map((p: any) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
                   </select>
                 </div>
-                <div className="input-group col-span-2">
-                  <label className="input-label">Description *</label>
-                  <textarea className="textarea" rows={2} placeholder="What materials are required?" {...register('description')} />
+                <div className="form-group col-span-2">
+                  <label className="form-label">Description / Title *</label>
+                  <textarea className="form-input" rows={2}
+                    placeholder="What materials are required? (required)"
+                    {...register('description', { required: 'Description is required' })} />
                 </div>
-                <div className="input-group">
-                  <label className="input-label">Priority</label>
-                  <select className="select" {...register('priority')}>
-                    <option>Low</option><option>Medium</option><option>High</option>
+                <div className="form-group">
+                  <label className="form-label">Priority</label>
+                  <select className="form-select" defaultValue="Normal" {...register('priority')}>
+                    <option>Low</option><option>Normal</option>
+                    <option>High</option><option>Urgent</option>
                   </select>
                 </div>
-                <div className="input-group">
-                  <label className="input-label">Required By Date</label>
-                  <input type="date" className="input" {...register('requiredByDate')} />
+                <div className="form-group">
+                  <label className="form-label">Required By Date</label>
+                  <input type="date" className="form-input" {...register('requiredByDate')} />
                 </div>
-                <div className="input-group col-span-2">
-                  <label className="input-label">Specifications / Notes</label>
-                  <textarea className="textarea" rows={2} placeholder="Technical specs, quantity, brand…" {...register('specifications')} />
+                <div className="form-group col-span-2">
+                  <label className="form-label">Specifications / Justification</label>
+                  <textarea className="form-input" rows={2}
+                    placeholder="Technical specs, brand preference, justification…"
+                    {...register('specifications')} />
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn-outline" onClick={() => { setShowCreate(false); reset(); }}>Cancel</button>
                 <button type="submit" disabled={isSubmitting || createMutation.isPending} className="btn-primary">
-                  {createMutation.isPending ? 'Creating…' : 'Submit MR'}
+                  {createMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating…</> : 'Submit MR'}
                 </button>
               </div>
             </form>
@@ -485,38 +319,163 @@ export default function ProcurementPage() {
         </div>
       )}
 
-      {/* MR Detail Modal */}
+      {/* ── MR Detail Panel ── */}
       {selectedMR && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedMR(null)}>
-          <div className="modal max-w-lg w-full">
+          <div className="modal max-w-2xl w-full">
             <div className="modal-header">
               <div>
-                <h2 className="font-semibold">{selectedMR.mrNumber}</h2>
-                <p className="text-xs text-[var(--text-secondary)] mt-0.5">{selectedMR.projectName}</p>
-              </div>
-              <button className="btn-icon btn-ghost" onClick={() => setSelectedMR(null)}><X className="w-4 h-4" /></button>
-            </div>
-            <div className="modal-body space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Current Status</span>
-                <span className={MR_STATUS[selectedMR.status]?.cls ?? 'badge-gray'}>
-                  {MR_STATUS[selectedMR.status]?.label}
-                </span>
-              </div>
-              <div>
-                <p className="text-xs text-[var(--text-secondary)] mb-1">Description</p>
-                <p className="text-sm bg-[var(--bg-secondary)] rounded-lg p-3">{selectedMR.description}</p>
-              </div>
-              {selectedMR.status !== "Closed" && (
-                <div className="flex gap-2">
-                  <button
-                    className="btn-primary flex-1"
-                    onClick={() => statusMutation.mutate({ id: selectedMR.id, action: getNextAction(selectedMR.status) })}
-                    disabled={statusMutation.isPending}
-                  >
-                    {statusMutation.isPending ? 'Updating…' : `→ ${MR_STATUS[selectedMR.status]?.next}`}
-                  </button>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-bold text-base" style={{color:'var(--primary)'}}>{selectedMR.mrNumber}</h2>
+                  <span className={clsx(STAGES[selectedMR.status]?.badge || 'badge-gray', 'text-xs')}>
+                    {STAGES[selectedMR.status]?.label || selectedMR.status}
+                  </span>
                 </div>
+                <p className="text-xs mt-0.5" style={{color:'var(--text-secondary)'}}>
+                  {selectedMR.projectName} · {selectedMR.requestedByName}
+                </p>
+              </div>
+              <button className="modal-close" onClick={() => setSelectedMR(null)}>✕</button>
+            </div>
+
+            <div className="modal-body space-y-5">
+
+              {/* 9-stage workflow stepper */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{color:'var(--text-secondary)'}}>
+                  Workflow Progress
+                </p>
+                <div className="flex items-center gap-0.5 overflow-x-auto pb-2">
+                  {STAGE_ORDER.map((stage, idx) => {
+                    const stageIdx   = currentStageIdx(selectedMR.status);
+                    const isDone     = idx < stageIdx;
+                    const isCurrent  = idx === stageIdx;
+                    const isPending  = idx > stageIdx;
+                    return (
+                      <div key={stage} className="flex items-center gap-0.5 flex-shrink-0">
+                        <div className={clsx(
+                          'flex flex-col items-center gap-1',
+                          isCurrent ? 'opacity-100' : isDone ? 'opacity-90' : 'opacity-40'
+                        )}>
+                          <div className={clsx(
+                            'w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold',
+                            isDone    ? 'bg-green-500 text-white' :
+                            isCurrent ? 'text-white'              : 'bg-gray-200 text-gray-500'
+                          )} style={isCurrent ? {background:'var(--primary)'} : {}}>
+                            {isDone ? '✓' : idx + 1}
+                          </div>
+                          <p className="text-[9px] text-center max-w-[52px] leading-tight" style={{color: isCurrent ? 'var(--primary)' : 'var(--text-secondary)'}}>
+                            {STAGES[stage].label}
+                          </p>
+                        </div>
+                        {idx < 8 && (
+                          <div className="w-4 h-px flex-shrink-0 mt-[-10px]"
+                            style={{background: isDone ? '#16A34A' : 'var(--border)'}} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* MR Details grid */}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-xs font-medium mb-1" style={{color:'var(--text-secondary)'}}>Title / Description</p>
+                  <p className="font-medium">{selectedMR.title || selectedMR.description || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium mb-1" style={{color:'var(--text-secondary)'}}>Priority</p>
+                  <span className={clsx(PRIORITY_BADGE[selectedMR.priority] || 'badge-gray', 'text-xs')}>
+                    {selectedMR.priority}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs font-medium mb-1" style={{color:'var(--text-secondary)'}}>Required By</p>
+                  <p>{selectedMR.requiredDate ? format(new Date(selectedMR.requiredDate), 'dd MMM yyyy') : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium mb-1" style={{color:'var(--text-secondary)'}}>Created</p>
+                  <p>{selectedMR.createdAt ? format(new Date(selectedMR.createdAt), 'dd MMM yyyy') : '—'}</p>
+                </div>
+                {selectedMR.justification && (
+                  <div className="col-span-2">
+                    <p className="text-xs font-medium mb-1" style={{color:'var(--text-secondary)'}}>Justification / Specs</p>
+                    <p className="p-2 rounded-lg text-sm" style={{background:'var(--bg-secondary)'}}>
+                      {selectedMR.justification}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Line items */}
+              {selectedMR.items?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:'var(--text-secondary)'}}>
+                    Line Items ({selectedMR.items.length})
+                  </p>
+                  <div className="table-wrap" style={{maxHeight:'150px', overflowY:'auto'}}>
+                    <table className="table">
+                      <thead>
+                        <tr><th>Description</th><th>Unit</th><th className="text-right">Qty</th><th className="text-right">Est. Cost</th></tr>
+                      </thead>
+                      <tbody>
+                        {selectedMR.items.map((item: any, i: number) => (
+                          <tr key={i}>
+                            <td>{item.description}</td>
+                            <td>{item.unit}</td>
+                            <td className="text-right">{item.quantity}</td>
+                            <td className="text-right">{item.estimatedCost ? `$${item.estimatedCost}` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              {/* Delete button — only for Draft */}
+              {selectedMR.status === 'Draft' && (
+                <button
+                  className="btn-outline mr-auto"
+                  style={{borderColor:'var(--primary)', color:'var(--primary)'}}
+                  onClick={() => {
+                    if (confirm(`Delete MR "${selectedMR.mrNumber}"? This cannot be undone.`)) {
+                      deleteMRMutation.mutate(selectedMR.id);
+                    }
+                  }}
+                  disabled={deleteMRMutation.isPending}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {deleteMRMutation.isPending ? 'Deleting…' : 'Delete MR'}
+                </button>
+              )}
+
+              <button className="btn-outline" onClick={() => setSelectedMR(null)}>Close</button>
+
+              {/* Advance button — hidden for Closed */}
+              {selectedMR.status !== 'Closed' && STAGES[selectedMR.status]?.action && (
+                <button
+                  className="btn-primary"
+                  onClick={() => advanceMutation.mutate({
+                    id:     selectedMR.id,
+                    action: STAGES[selectedMR.status].action!,
+                  })}
+                  disabled={advanceMutation.isPending}
+                >
+                  {advanceMutation.isPending
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Updating…</>
+                    : <><CheckCircle className="w-4 h-4" /> {STAGES[selectedMR.status].actionLabel}</>
+                  }
+                </button>
+              )}
+
+              {selectedMR.status === 'Closed' && (
+                <span className="badge-gray px-3 py-1.5 text-sm font-medium">
+                  ✓ Closed — no further action
+                </span>
               )}
             </div>
           </div>

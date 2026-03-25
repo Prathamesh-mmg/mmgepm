@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, tasksApi, api } from '../lib/api';
@@ -63,6 +63,20 @@ export default function ProjectDetailPage() {
   const updateStatusMutation = useMutation({
     mutationFn: (status: string) => projectsApi.updateStatus(id!, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['project', id] }),
+  });
+
+  const [editProgress, setEditProgress] = React.useState(false);
+  const [progressVal,  setProgressVal]  = React.useState('');
+
+  const updateProgressMutation = useMutation({
+    mutationFn: (pct: number) => api.patch(`/projects/${id}/progress`, { progress: pct }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', id] });
+      setEditProgress(false);
+      import('react-hot-toast').then(({ default: toast }) => toast.success('Progress updated'));
+    },
+    onError: (e: any) => import('react-hot-toast').then(({ default: toast }) =>
+      toast.error(e.response?.data?.message || 'Failed to update progress')),
   });
 
   const addMemberMutation = useMutation({
@@ -152,7 +166,36 @@ export default function ProjectDetailPage() {
       <div className="card mb-6">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-          <span className="text-lg font-bold text-[var(--primary)]">{project.overallProgress ?? 0}%</span>
+          <div className="flex items-center gap-2">
+            {editProgress ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="number" min="0" max="100"
+                  className="form-input w-20 text-center text-sm"
+                  style={{height:'32px'}}
+                  value={progressVal}
+                  onChange={e => setProgressVal(e.target.value)}
+                  autoFocus
+                />
+                <button className="btn-primary btn-sm"
+                  onClick={() => updateProgressMutation.mutate(Number(progressVal))}
+                  disabled={updateProgressMutation.isPending}>
+                  {updateProgressMutation.isPending ? '…' : '✓'}
+                </button>
+                <button className="btn-ghost btn-sm" onClick={() => setEditProgress(false)}>✕</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <span className="text-lg font-bold text-[var(--primary)]">{project.overallProgress ?? 0}%</span>
+                <button
+                  className="text-xs text-gray-400 hover:text-[var(--primary)] ml-1"
+                  title="Edit progress"
+                  onClick={() => { setProgressVal(String(project.overallProgress ?? 0)); setEditProgress(true); }}>
+                  ✎
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="progress-bar h-3">
           <div className="progress-fill" style={{ width: `${project.overallProgress ?? 0}%` }} />

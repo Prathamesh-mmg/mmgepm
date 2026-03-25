@@ -52,7 +52,7 @@ export default function ProjectsPage() {
       setShowModal(false);
       setForm(emptyForm);
     },
-    onError: (e: any) => setFormError(e.response?.data?.message || 'Failed to create project'),
+    onError: (e: any) => setFormError(e.response?.data?.message || e.response?.data?.inner || e.message || 'Failed to create project'),
   });
 
   const projects    = data?.items ?? [];

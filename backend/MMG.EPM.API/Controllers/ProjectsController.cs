@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using MMG.EPM.API.Data;
 using Microsoft.AspNetCore.Mvc;
 using MMG.EPM.API.Domain.DTOs;
 using MMG.EPM.API.Infrastructure.Services;
@@ -11,9 +12,10 @@ public class ProjectsController : ControllerBase
     private readonly IProjectService     _projects;
     private readonly ICurrentUserService _cu;
     private readonly IReportService      _reports;
+    private readonly AppDbContext        _db;
 
-    public ProjectsController(IProjectService projects, ICurrentUserService cu, IReportService reports)
-    { _projects = projects; _cu = cu; _reports = reports; }
+    public ProjectsController(IProjectService projects, ICurrentUserService cu, IReportService reports, AppDbContext db)
+    { _projects = projects; _cu = cu; _reports = reports; _db = db; }
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -47,6 +49,18 @@ public class ProjectsController : ControllerBase
     [HttpGet("{id:guid}/attendance")]
     public async Task<IActionResult> GetAttendance(Guid id, [FromQuery] string? date)
         => Ok(await _projects.GetAttendanceAsync(id, date));
+
+    [HttpPatch("{id:guid}/progress")]
+    public async Task<IActionResult> UpdateProgress(Guid id, [FromBody] UpdateProjectProgressRequest req)
+    {
+        var project = await _db.Projects.FindAsync(id);
+        if (project == null || project.IsDeleted) return NotFound();
+        project.OverallProgress = Math.Clamp(req.Progress, 0, 100);
+        project.UpdatedAt       = DateTime.UtcNow;
+        project.UpdatedById     = _cu.UserId;
+        await _db.SaveChangesAsync();
+        return Ok(new { project.Id, project.OverallProgress });
+    }
 
     [HttpPost("{id:guid}/members")]
     public async Task<IActionResult> AddMember(Guid id, [FromBody] AddProjectMemberRequest req)

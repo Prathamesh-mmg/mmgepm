@@ -17,7 +17,7 @@ const createUserSchema = z.object({
   department:  z.string().optional(),
   designation: z.string().optional(),
   employeeId:  z.string().optional(),
-  roleIds:     z.array(z.number()).min(1, 'Assign at least one role'),
+  roleIds:     z.array(z.string()).min(1, 'Assign at least one role'),
 });
 type CreateUserForm = z.infer<typeof createUserSchema>;
 
@@ -46,7 +46,15 @@ export default function UsersPage() {
   const watchedRoles = watch('roleIds') ?? [];
 
   const createMutation = useMutation({
-    mutationFn: (data: CreateUserForm) => usersApi.create(data),
+    mutationFn: (data: CreateUserForm) => usersApi.create({
+      firstName:  data.firstName,
+      lastName:   data.lastName,
+      email:      data.email,
+      password:   data.password,
+      department: data.department || null,
+      jobTitle:   data.designation || null,
+      roles:      data.roleIds,   // backend expects List<string> Roles
+    }),
     onSuccess: () => {
       toast.success('User created');
       qc.invalidateQueries({ queryKey: ['users'] });
@@ -63,11 +71,11 @@ export default function UsersPage() {
     },
   });
 
-  const toggleRole = (roleId: number) => {
+  const toggleRole = (roleName: string) => {
     const current = watchedRoles;
     setValue(
       'roleIds',
-      current.includes(roleId) ? current.filter(r => r !== roleId) : [...current, roleId]
+      current.includes(roleName) ? current.filter(r => r !== roleName) : [...current, roleName]
     );
   };
 
@@ -206,10 +214,10 @@ export default function UsersPage() {
                       <button
                         key={r.roleId}
                         type="button"
-                        onClick={() => toggleRole(r.roleId)}
+                        onClick={() => toggleRole(r.name)}
                         className={clsx(
                           'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                          watchedRoles.includes(r.roleId)
+                          watchedRoles.includes(r.name)
                             ? 'bg-[var(--primary)] text-[#0e0b08] border-[var(--primary)]'
                             : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--primary)]'
                         )}

@@ -20,6 +20,7 @@ public interface IRiskService
 public interface IBudgetService
 {
     Task<List<ProjectBudgetDto>> GetProjectBudgetsAsync(Guid projectId);
+    Task<ProjectBudgetDto> CreateBudgetAsync(CreateProjectBudgetRequest request, Guid userId);
     Task<List<BudgetWBSDto>> GetWBSItemsAsync(Guid projectId);
     Task<BudgetWBSDto?> GetWBSItemAsync(Guid id);
     Task<List<ExpenditureDto>> GetExpendituresAsync(Guid projectId, Guid? wbsId);
@@ -48,6 +49,7 @@ public interface IInventoryService
 public interface IResourceService
 {
     Task<PagedResult<ResourceDto>> GetResourcesAsync(string? search, string? status, string? type, int page, int pageSize);
+    Task<ResourceDto> CreateResourceAsync(CreateResourceRequest req, Guid userId);
     Task<List<ResourceAllocationDto>> GetAllocationsAsync(Guid? projectId, Guid? resourceId);
     Task<ResourceAllocationDto> AllocateAsync(Guid taskId, Guid resourceId, DateTime start, DateTime end, decimal percent, Guid userId);
 }
@@ -225,6 +227,35 @@ public class BudgetService : IBudgetService
 {
     private readonly AppDbContext _db;
     public BudgetService(AppDbContext db) => _db = db;
+
+    public async Task<ProjectBudgetDto> CreateBudgetAsync(CreateProjectBudgetRequest req, Guid userId)
+    {
+        // TC-BUD-002: Only one active budget per project
+        var hasActive = await _db.ProjectBudgets
+            .AnyAsync(b => b.ProjectId == req.ProjectId && !b.IsDeleted
+                       && (b.Status == "Active" || b.Status == "Draft"));
+        if (hasActive)
+            throw new InvalidOperationException("A budget already exists for this project. Only one budget is allowed per project.");
+
+        var existing = await _db.ProjectBudgets
+            .Where(b => b.ProjectId == req.ProjectId && !b.IsDeleted)
+            .CountAsync();
+
+        var budget = new ProjectBudget
+        {
+            ProjectId           = req.ProjectId,
+            BudgetVersion       = $"v{existing + 1}",
+            TotalApprovedBudget = req.TotalAmount,
+            Currency            = req.Currency ?? "USD",
+            Notes               = req.Notes,
+            Status              = "Draft",
+            CreatedById         = userId,
+        };
+        _db.ProjectBudgets.Add(budget);
+        await _db.SaveChangesAsync();
+        
+        return (await GetProjectBudgetsAsync(req.ProjectId)).First(b => b.Id == budget.Id);
+    }
 
     public async Task<List<ProjectBudgetDto>> GetProjectBudgetsAsync(Guid projectId)
     {
@@ -509,6 +540,31 @@ public class ResourceService : IResourceService
 {
     private readonly AppDbContext _db;
     public ResourceService(AppDbContext db) => _db = db;
+
+    public async Task<ResourceDto> CreateResourceAsync(CreateResourceRequest req, Guid userId)
+    {
+        var resource = new Resource
+        {
+            Name           = req.Name,
+            Code           = req.Code,
+            ResourceTypeId = req.ResourceTypeId,
+            CostPerDay     = req.CostPerDay,
+            CostPerHour    = req.CostPerHour,
+            Currency       = req.Currency ?? "USD",
+            Status         = "Available",
+            Notes          = req.Notes,
+            Make           = req.Make,
+            Model          = req.Model,
+            SerialNumber   = req.SerialNumber,
+            CreatedById    = userId,
+        };
+        _db.Resources.Add(resource);
+        await _db.SaveChangesAsync();
+        var result = await GetResourcesAsync(null, null, null, 1, 1);
+        return (await GetResourcesAsync(req.Name, null, null, 1, 5)).Items.FirstOrDefault()
+            ?? new ResourceDto(resource.Id, resource.Name, resource.Code, null, null,
+               resource.CostPerHour, resource.CostPerDay, resource.Currency, resource.Status, null, null);
+    }
 
     public async Task<PagedResult<ResourceDto>> GetResourcesAsync(string? search, string? status, string? type, int page, int pageSize)
     {
