@@ -230,11 +230,17 @@ public class BudgetService : IBudgetService
 
     public async Task<ProjectBudgetDto> CreateBudgetAsync(CreateProjectBudgetRequest req, Guid userId)
     {
-        // Ensure only one active budget per project
+        // TC-BUD-002: Only one active budget per project
+        var hasActive = await _db.ProjectBudgets
+            .AnyAsync(b => b.ProjectId == req.ProjectId && !b.IsDeleted
+                       && (b.Status == "Active" || b.Status == "Draft"));
+        if (hasActive)
+            throw new InvalidOperationException("A budget already exists for this project. Only one budget is allowed per project.");
+
         var existing = await _db.ProjectBudgets
             .Where(b => b.ProjectId == req.ProjectId && !b.IsDeleted)
             .CountAsync();
-        
+
         var budget = new ProjectBudget
         {
             ProjectId           = req.ProjectId,

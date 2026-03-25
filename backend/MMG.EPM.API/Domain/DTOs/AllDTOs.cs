@@ -524,3 +524,5 @@ public record CreateResourceRequest(
 public record UpdateResourceStatusRequest(string Status);
 
 public record UpdateProjectProgressRequest(decimal Progress);
+
+public record DeployResourceRequest(Guid ResourceId, Guid ProjectId, DateTime? DeployedFrom);

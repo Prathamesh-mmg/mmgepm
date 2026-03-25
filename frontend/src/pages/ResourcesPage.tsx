@@ -16,6 +16,9 @@ export default function ResourcesPage() {
   const [projectId,  setProjectId]  = useState('');
   const [subTab,     setSubTab]     = useState<'pool'|'allocations'|'equipment'>('pool');
   const [showAdd,    setShowAdd]    = useState(false);
+  const [showDeploy, setShowDeploy] = useState(false);
+  const [deployTarget, setDeployTarget] = useState<any>(null);
+  const [deployProjectId, setDeployProjectId] = useState('');
   const [resForm,    setResForm]    = useState({
     name: '', code: '', category: 'Human',
     costPerHour: '', costPerDay: '', currency: 'USD',
@@ -47,6 +50,31 @@ export default function ResourcesPage() {
 
   const resources: any[] = Array.isArray(resourcesData) ? resourcesData
     : (resourcesData as any)?.items ?? [];
+
+  const deployMutation = useMutation({
+    mutationFn: ({ resourceId, projectId }: { resourceId: string; projectId: string }) =>
+      api.patch(`/resources/${resourceId}/status`, { status: 'Allocated' }).then(() =>
+        api.post('/resources/equipment-deployments', { resourceId, projectId, deployedFrom: new Date().toISOString() })
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['resources'] });
+      setShowDeploy(false); setDeployTarget(null); setDeployProjectId('');
+      import('react-hot-toast').then(({ default: toast }) => toast.success('Resource deployed to project'));
+    },
+    onError: (e: any) => import('react-hot-toast').then(({ default: toast }) =>
+      toast.error(e.response?.data?.message || 'Failed to deploy resource')),
+  });
+
+  const releaseMutation = useMutation({
+    mutationFn: (resourceId: string) =>
+      api.patch(`/resources/${resourceId}/status`, { status: 'Available' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['resources'] });
+      import('react-hot-toast').then(({ default: toast }) => toast.success('Resource released back to pool'));
+    },
+    onError: (e: any) => import('react-hot-toast').then(({ default: toast }) =>
+      toast.error(e.response?.data?.message || 'Failed to release resource')),
+  });
 
   const createMutation = useMutation({
     mutationFn: (data: any) => api.post('/resources', data),
@@ -162,6 +190,24 @@ export default function ResourcesPage() {
                         </span>
                       </td>
                       <td>
+                        {(r.status === 'Available' || !r.status) && (
+                          <button
+                            className="text-xs px-2 py-1 rounded font-medium mr-1"
+                            style={{background:'var(--secondary)', color:'#1F2937'}}
+                            onClick={e => { e.stopPropagation(); setDeployTarget(r); setShowDeploy(true); }}
+                            title="Deploy to project">
+                            Deploy
+                          </button>
+                        )}
+                        {r.status === 'Allocated' && (
+                          <button
+                            className="text-xs px-2 py-1 rounded font-medium mr-1"
+                            style={{background:'var(--primary-light)', color:'var(--primary)'}}
+                            onClick={e => { e.stopPropagation(); if(confirm('Release this resource back to pool?')) releaseMutation.mutate(r.id || r.resourceId); }}
+                            title="Release resource">
+                            Release
+                          </button>
+                        )}
                         <button className="btn-ghost btn-sm btn-icon"
                           onClick={() => { if (confirm('Remove this resource?')) deleteMutation.mutate(r.id || r.resourceId); }}>
                           ✕
@@ -312,6 +358,50 @@ export default function ResourcesPage() {
                 })}
               >
                 {createMutation.isPending ? 'Adding…' : 'Add to Pool'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Deploy Resource Modal (TC-RES-004) ── */}
+      {showDeploy && deployTarget && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowDeploy(false)}>
+          <div className="modal max-w-md w-full">
+            <div className="modal-header">
+              <h2 className="font-semibold">Deploy Resource</h2>
+              <button className="modal-close" onClick={() => setShowDeploy(false)}>✕</button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="p-3 rounded-lg" style={{background:'var(--bg-secondary)'}}>
+                <p className="font-medium text-sm">{deployTarget.name || deployTarget.resourceName}</p>
+                <p className="text-xs mt-1" style={{color:'var(--text-secondary)'}}>
+                  {deployTarget.resourceType || deployTarget.category || 'Resource'} · Status:
+                  <span className="ml-1 font-medium text-green-600">Available</span>
+                </p>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Assign to Project *</label>
+                <select className="form-select" value={deployProjectId}
+                  onChange={e => setDeployProjectId(e.target.value)}>
+                  <option value="">Select project…</option>
+                  {(projects as any[] || []).map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowDeploy(false)}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={!deployProjectId || deployMutation.isPending}
+                onClick={() => deployMutation.mutate({
+                  resourceId: deployTarget.id || deployTarget.resourceId,
+                  projectId:  deployProjectId,
+                })}
+              >
+                {deployMutation.isPending ? 'Deploying…' : 'Deploy Resource'}
               </button>
             </div>
           </div>

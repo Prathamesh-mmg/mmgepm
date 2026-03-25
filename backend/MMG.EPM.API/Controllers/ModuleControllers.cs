@@ -268,6 +268,28 @@ public class ResourcesController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("equipment-deployments")]
+    public async Task<IActionResult> Deploy([FromBody] DeployResourceRequest req)
+    {
+        var resource = await _db.Resources.FindAsync(req.ResourceId)
+            ?? throw new KeyNotFoundException("Resource not found");
+        resource.Status    = "Allocated";
+        resource.UpdatedAt = DateTime.UtcNow;
+
+        var deployment = new EquipmentDeployment
+        {
+            ResourceId   = req.ResourceId,
+            ProjectId    = req.ProjectId,
+            DeployedFrom = req.DeployedFrom ?? DateTime.UtcNow,
+            Status       = "Deployed",
+            DeployedById = _cu.UserId,
+            CreatedById  = _cu.UserId,
+        };
+        _db.EquipmentDeployments.Add(deployment);
+        await _db.SaveChangesAsync();
+        return Ok(new { deployment.Id, resource.Status, deployment.ProjectId });
+    }
+
     [HttpGet("allocations")]
     public async Task<IActionResult> GetAllocations([FromQuery] Guid? projectId, [FromQuery] Guid? resourceId)
         => Ok(await _res.GetAllocationsAsync(projectId, resourceId));
