@@ -563,7 +563,8 @@ public class ResourceService : IResourceService
         var result = await GetResourcesAsync(null, null, null, 1, 1);
         return (await GetResourcesAsync(req.Name, null, null, 1, 5)).Items.FirstOrDefault()
             ?? new ResourceDto(resource.Id, resource.Name, resource.Code, null, null,
-               resource.CostPerHour, resource.CostPerDay, resource.Currency, resource.Status, null, null);
+               null, resource.Status, resource.CostPerHour, resource.CostPerDay,
+               resource.Currency, null, resource.Make, resource.Model);
     }
 
     public async Task<PagedResult<ResourceDto>> GetResourcesAsync(string? search, string? status, string? type, int page, int pageSize)
