@@ -526,3 +526,11 @@ public record UpdateResourceStatusRequest(string Status);
 public record UpdateProjectProgressRequest(decimal Progress);
 
 public record DeployResourceRequest(Guid ResourceId, Guid ProjectId, DateTime? DeployedFrom);
+
+public record CreateProjectBudgetRequest(
+    Guid ProjectId,
+    decimal TotalAmount,
+    string? Currency,
+    string? Notes);
+
+public record UpdateDrawingStatusRequest(string Status, string? Revision);
