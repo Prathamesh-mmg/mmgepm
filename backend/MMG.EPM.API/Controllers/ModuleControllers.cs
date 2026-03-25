@@ -108,8 +108,9 @@ public class ProcurementController : ControllerBase
     private readonly IProcurementService _proc;
     private readonly ICurrentUserService _cu;
     private readonly IReportService _reports;
-    public ProcurementController(IProcurementService proc, ICurrentUserService cu, IReportService reports)
-    { _proc = proc; _cu = cu; _reports = reports; }
+    private readonly AppDbContext _db;
+    public ProcurementController(IProcurementService proc, ICurrentUserService cu, IReportService reports, AppDbContext db)
+    { _db = db; _proc = proc; _cu = cu; _reports = reports; }
 
     [HttpGet("material-requests")]
     public async Task<IActionResult> GetMRs(
@@ -170,8 +171,9 @@ public class InventoryController : ControllerBase
     private readonly IInventoryService _inv;
     private readonly ICurrentUserService _cu;
     private readonly IReportService _reports;
-    public InventoryController(IInventoryService inv, ICurrentUserService cu, IReportService reports)
-    { _inv = inv; _cu = cu; _reports = reports; }
+    private readonly AppDbContext _db;
+    public InventoryController(IInventoryService inv, ICurrentUserService cu, IReportService reports, AppDbContext db)
+    { _db = db; _inv = inv; _cu = cu; _reports = reports; }
 
     [HttpGet("materials")]
     public async Task<IActionResult> GetMaterials(
