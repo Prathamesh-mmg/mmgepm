@@ -495,7 +495,6 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
-    </div>
       {/* ── Issue Material Modal (TC-INV-005, TC-INV-006) ── */}
       {showIssue && issueTarget && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowIssue(false)}>
@@ -558,5 +557,6 @@ export default function InventoryPage() {
         </div>
       )}
 
+    </div>
   );
 }
