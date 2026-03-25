@@ -663,7 +663,6 @@ export default function DocumentsPage() {
           )}
         </div>
       )}
-    </div>
       {/* ── Create Change Request Modal ── */}
       {showCRForm && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCRForm(false)}>
@@ -769,5 +768,6 @@ export default function DocumentsPage() {
         </div>
       )}
 
+    </div>
   );
 }

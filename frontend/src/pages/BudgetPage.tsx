@@ -687,7 +687,6 @@ export default function BudgetPage() {
           )}
         </>
       )}
-    </div>
       {/* ── Create Budget Modal ── */}
       {showCreateBudget && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCB(false)}>
@@ -740,5 +739,6 @@ export default function BudgetPage() {
         </div>
       )}
 
+    </div>
   );
 }
