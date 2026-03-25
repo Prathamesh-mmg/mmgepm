@@ -41,7 +41,7 @@ export default function InventoryPage() {
 
   const { data: materials } = useQuery({
     queryKey: ['materials-search', materialSearch],
-    queryFn:  () => inventoryApi.getMaterials({ search: materialSearch, pageSize: 50 }).then(r => r.data),
+    queryFn:  () => inventoryApi.getMaterials({ search: materialSearch, page: 1 }).then(r => r.data),
     enabled:  materialSearch.length >= 1 || showReceipt || showTransfer,
   });
 

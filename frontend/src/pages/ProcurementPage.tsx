@@ -40,7 +40,7 @@ export default function ProcurementPage() {
 
   const { data: mrs, isLoading: mrsLoading } = useQuery({
     queryKey: ['material-requests'],
-    queryFn:  () => procurementApi.getMRs({ pageSize: 100 }).then(r => r.data),
+    queryFn:  () => procurementApi.getMRs({ page: 1 }).then(r => r.data),
     enabled:  subTab === 'mr',
   });
 
