@@ -135,6 +135,18 @@ export const tasksApi = {
                      api.get('/tasks/export', { params: { projectId }, responseType: 'blob' }),
 };
 
+// ── MPP Import ─────────────────────────────────────────────────
+export const mppApi = {
+  importMpp: (projectId: string, file: File, mode: 'replace' | 'append' = 'replace') => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post(`/mpp/projects/${projectId}/import?mode=${mode}`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  getImports: (projectId: string) => api.get(`/mpp/projects/${projectId}/imports`),
+};
+
 // ── Risks ──────────────────────────────────────────────────────
 export const risksApi = {
   getAll:       (params?: { projectId?: string; status?: string; category?: string; page?: number }) =>

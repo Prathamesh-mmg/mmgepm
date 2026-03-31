@@ -222,8 +222,29 @@ export default function TaskDetailPage() {
               {[
                 ['Priority', <span className={`font-medium ${PRIORITY_COLORS[task.priority] || ''}`}>{task.priority}</span>],
                 ['Assignee', task.assigneeName || '—'],
-                ['Start Date', task.startDate ? format(new Date(task.startDate), 'dd MMM yyyy') : '—'],
-                ['End Date', task.endDate ? format(new Date(task.endDate), 'dd MMM yyyy') : '—'],
+                ['Planned Start', task.startDate ? format(new Date(task.startDate), 'dd MMM yyyy') : '—'],
+                ['Planned End', task.endDate ? format(new Date(task.endDate), 'dd MMM yyyy') : '—'],
+                ['Baseline Start', task.baselineStartDate ? (
+                  <span className="font-medium" style={{ color: '#6B7280' }}>
+                    {format(new Date(task.baselineStartDate), 'dd MMM yyyy')}
+                  </span>
+                ) : <span className="text-gray-400 text-xs">Not set</span>],
+                ['Baseline End', task.baselineEndDate ? (
+                  <span className="font-medium" style={{ color: '#6B7280' }}>
+                    {format(new Date(task.baselineEndDate), 'dd MMM yyyy')}
+                  </span>
+                ) : <span className="text-gray-400 text-xs">Not set</span>],
+                ...(task.baselineEndDate && task.endDate ? [[
+                  'Schedule Variance',
+                  (() => {
+                    const variance = Math.round((new Date(task.endDate).getTime() - new Date(task.baselineEndDate).getTime()) / (1000 * 60 * 60 * 24));
+                    return variance === 0
+                      ? <span className="text-green-600 font-semibold">On Schedule</span>
+                      : variance > 0
+                      ? <span className="text-red-500 font-semibold">+{variance}d behind</span>
+                      : <span className="text-green-600 font-semibold">{variance}d ahead</span>;
+                  })()
+                ]] : []),
                 ['Estimated Hrs', task.estimatedHours ? `${task.estimatedHours}h` : '—'],
                 ['Actual Hrs', task.actualHours ? `${task.actualHours}h` : '—'],
                 ['Parent Task', task.parentTaskName || '—'],

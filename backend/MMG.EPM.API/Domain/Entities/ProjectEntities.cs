@@ -96,8 +96,13 @@ public class ProjectTask : BaseEntity
     public int Level { get; set; } = 1;                         // 1–7
 
     // Dates & Estimates
-    public DateTime? StartDate { get; set; }
-    public DateTime? EndDate   { get; set; }
+    public DateTime? StartDate         { get; set; }
+    public DateTime? EndDate           { get; set; }
+    public DateTime? BaselineStartDate { get; set; }  // Locked baseline for variance analysis
+    public DateTime? BaselineEndDate   { get; set; }  // Locked baseline for variance analysis
+    public DateTime? ActualStartDate   { get; set; }  // When work actually started
+    public DateTime? ActualEndDate     { get; set; }  // When work actually completed
+    [MaxLength(50)] public string? EngagementType { get; set; }  // Departmental | Measurement | OT
     [Column(TypeName = "decimal(10,2)")] public decimal? EstimatedHours { get; set; }
     [Column(TypeName = "decimal(10,2)")] public decimal? ActualHours    { get; set; }
     [Column(TypeName = "decimal(18,2)")] public decimal? EstimatedCost  { get; set; }
@@ -215,6 +220,9 @@ public class CrewAttendance : BaseEntity
     [MaxLength(100)] public string? TradeCode { get; set; }
     public int? PlannedCount { get; set; }
     public int? ActualCount  { get; set; }
+    // Engagement type (M2-2): Departmental | Measurement | OT
+    [MaxLength(50)] public string? EngagementType { get; set; } = "Departmental";
+    [Column(TypeName = "decimal(5,2)")] public decimal? OvertimeHours { get; set; }
 
     public Project?       Project        { get; set; }
     public Contractor?    Contractor     { get; set; }
@@ -284,6 +292,27 @@ public class TaskComment : BaseEntity
     [ForeignKey(nameof(ParentCommentId))] public TaskComment? ParentComment { get; set; }
     public ICollection<TaskComment> Replies { get; set; } = new List<TaskComment>();
 }
+// ─── MPP Import Log ─────────────────────────────────────────────
+
+public class MppImportLog : BaseEntity
+{
+    public Guid ProjectId { get; set; }
+    [Required, MaxLength(500)] public string FileName { get; set; } = "";
+    public long FileSize { get; set; }
+    [MaxLength(20)] public string ImportMode { get; set; } = "replace";
+    public int TasksImported { get; set; }
+    public int ResourcesImported { get; set; }
+    public int AssignmentsImported { get; set; }
+    [Required, MaxLength(50)] public string Status { get; set; } = "Processing";
+    // Processing | Completed | Failed
+    [MaxLength(1000)] public string? ErrorMessage { get; set; }
+    public Guid ImportedById { get; set; }
+
+    public Project Project { get; set; } = null!;
+    [System.ComponentModel.DataAnnotations.Schema.ForeignKey(nameof(ImportedById))]
+    public User? ImportedBy { get; set; }
+}
+
 // ─── Task Dependencies ──────────────────────────────────────────
 
 public class TaskDependency : BaseEntity
