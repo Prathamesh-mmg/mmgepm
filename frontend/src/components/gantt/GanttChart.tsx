@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { format, addDays, differenceInDays, isWeekend } from 'date-fns';
 import clsx from 'clsx';
 import { ChevronDown, ChevronRight, ZoomIn, ZoomOut, Calendar } from 'lucide-react';
@@ -48,7 +48,36 @@ export default function GanttChart({ tasks, projectStart, projectEnd, readOnly =
   const [zoom, setZoom]             = useState<ZoomLevel>('week');
   const [collapsed, setCollapsed]   = useState<Set<string>>(new Set());
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef  = useRef<HTMLDivElement>(null);
+  const labelsRef  = useRef<HTMLDivElement>(null);
+  const syncingRef = useRef(false);
+
+  // Synchronize vertical scroll between label column and chart area
+  useEffect(() => {
+    const chart  = scrollRef.current;
+    const labels = labelsRef.current;
+    if (!chart || !labels) return;
+
+    const onChartScroll = () => {
+      if (syncingRef.current) return;
+      syncingRef.current = true;
+      labels.scrollTop = chart.scrollTop;
+      syncingRef.current = false;
+    };
+    const onLabelsScroll = () => {
+      if (syncingRef.current) return;
+      syncingRef.current = true;
+      chart.scrollTop = labels.scrollTop;
+      syncingRef.current = false;
+    };
+
+    chart.addEventListener('scroll', onChartScroll);
+    labels.addEventListener('scroll', onLabelsScroll);
+    return () => {
+      chart.removeEventListener('scroll', onChartScroll);
+      labels.removeEventListener('scroll', onLabelsScroll);
+    };
+  }, []);
 
   const pStart = new Date(projectStart);
   const pEnd   = new Date(projectEnd);
@@ -205,7 +234,7 @@ export default function GanttChart({ tasks, projectStart, projectEnd, readOnly =
             <span className="w-8 text-center">St.</span>
           </div>
           {/* Label rows */}
-          <div className="overflow-y-auto flex-1 scrollbar-thin" id="gantt-labels">
+          <div ref={labelsRef} className="overflow-y-auto flex-1 scrollbar-thin" id="gantt-labels">
             {visibleTasks.map(task => (
               <TaskRow key={task.id} task={task}
                 isCollapsed={collapsed.has(task.id)}

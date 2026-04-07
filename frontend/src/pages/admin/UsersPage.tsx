@@ -23,9 +23,11 @@ type CreateUserForm = z.infer<typeof createUserSchema>;
 
 export default function UsersPage() {
   const qc = useQueryClient();
-  const [search,      setSearch]      = useState('');
-  const [showCreate,  setShowCreate]  = useState(false);
-  const [editUser,    setEditUser]    = useState<any>(null);
+  const [search,        setSearch]        = useState('');
+  const [showCreate,    setShowCreate]    = useState(false);
+  const [editUser,      setEditUser]      = useState<any>(null);
+  const [editRolesUser, setEditRolesUser] = useState<any>(null);
+  const [editRoleIds,   setEditRoleIds]   = useState<string[]>([]);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users', search],
@@ -69,6 +71,16 @@ export default function UsersPage() {
       toast.success('User status updated');
       qc.invalidateQueries({ queryKey: ['users'] });
     },
+  });
+
+  const updateRolesMutation = useMutation({
+    mutationFn: ({ id, roles }: { id: string; roles: string[] }) => usersApi.updateRoles(id, roles),
+    onSuccess: () => {
+      toast.success('Roles updated');
+      qc.invalidateQueries({ queryKey: ['users'] });
+      setEditRolesUser(null);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to update roles'),
   });
 
   const toggleRole = (roleName: string) => {
@@ -144,6 +156,13 @@ export default function UsersPage() {
                     <td>
                       <div className="flex gap-1">
                         <button
+                          className="btn-icon btn-sm text-blue-500 hover:text-blue-700"
+                          title="Edit Roles"
+                          onClick={() => { setEditRolesUser(u); setEditRoleIds(u.roles ?? []); }}
+                        >
+                          <Shield className="w-4 h-4" />
+                        </button>
+                        <button
                           className={clsx('btn-icon btn-sm', u.isActive ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-600')}
                           title={u.isActive ? 'Deactivate' : 'Activate'}
                           onClick={() => toggleActiveMutation.mutate({ id: u.id, isActive: !u.isActive })}
@@ -158,6 +177,53 @@ export default function UsersPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Edit Roles Modal */}
+      {editRolesUser && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditRolesUser(null)}>
+          <div className="modal max-w-md w-full">
+            <div className="modal-header">
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-[var(--primary)]" />
+                <h2 className="font-semibold">Edit Roles — {editRolesUser.firstName} {editRolesUser.lastName}</h2>
+              </div>
+              <button className="btn-icon btn-ghost" onClick={() => setEditRolesUser(null)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <label className="input-label mb-2 block">Select Roles (one or more)</label>
+              <div className="flex flex-wrap gap-2">
+                {(roles as string[] ?? []).map((r: string) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setEditRoleIds(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r])}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                      editRoleIds.includes(r)
+                        ? 'bg-[var(--primary)] text-[#0e0b08] border-[var(--primary)]'
+                        : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--primary)]'
+                    )}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setEditRolesUser(null)}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={editRoleIds.length === 0 || updateRolesMutation.isPending}
+                onClick={() => updateRolesMutation.mutate({ id: editRolesUser.id, roles: editRoleIds })}
+              >
+                {updateRolesMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : 'Save Roles'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create User Modal */}
       {showCreate && (
