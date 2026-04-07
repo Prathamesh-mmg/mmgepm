@@ -483,10 +483,16 @@ export default function DocumentsPage() {
                       <td>
                         <div className="flex items-center gap-1.5">
                           {d.fileUrl && (
-                            <a href={d.fileUrl} target="_blank" rel="noreferrer"
-                              className="p-1.5 rounded hover:bg-gray-100 text-gray-500" title="Download">
-                              <Download className="w-3.5 h-3.5" />
-                            </a>
+                            <>
+                              <a href={d.fileUrl} target="_blank" rel="noreferrer"
+                                className="p-1.5 rounded hover:bg-blue-50 text-gray-500 hover:text-blue-600" title="View drawing">
+                                <Eye className="w-3.5 h-3.5" />
+                              </a>
+                              <a href={d.fileUrl} download
+                                className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700" title="Download">
+                                <Download className="w-3.5 h-3.5" />
+                              </a>
+                            </>
                           )}
                           {/* DM-EXT-3: versions */}
                           <button onClick={() => { setDrawing(d); setVersions(true); }}

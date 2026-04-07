@@ -118,7 +118,8 @@ export default function ProjectDetailPage() {
   if (!project) return <div className="page-container"><p className="text-gray-500">Project not found.</p></div>;
 
   const canManage = hasRole('Admin') || hasRole('Project Manager') || hasRole('Planning Engineer');
-  const taskList: any[]  = Array.isArray(tasks) ? tasks : (tasks?.items ?? []);
+  const taskListRaw: any[] = Array.isArray(tasks) ? tasks : (tasks?.items ?? []);
+  const taskList: any[] = [...taskListRaw].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.wbsCode ?? '').localeCompare(b.wbsCode ?? ''));
   const dprList: any[]   = Array.isArray(dprs) ? dprs : [];
   const attendList: any[] = Array.isArray(attendance) ? attendance : [];
   const members: any[]   = project.members ?? [];
@@ -385,24 +386,6 @@ export default function ProjectDetailPage() {
             />
           )}
 
-          {/* Dependency summary */}
-          {ganttData?.tasks && ganttData.tasks.some((t: any) => t.dependencies?.length > 0) && (
-            <div className="card p-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">Dependency Summary</h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {ganttData.tasks
-                  .filter((t: any) => t.dependencies?.length > 0)
-                  .map((t: any) => (
-                    <div key={t.id} className="flex items-center gap-2 text-xs">
-                      <span className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" />
-                      <span className="text-gray-700 truncate">{t.name}</span>
-                      <span className="text-gray-400 flex-shrink-0">← {t.dependencies.length}</span>
-                    </div>
-                  ))
-                }
-              </div>
-            </div>
-          )}
         </div>
       )}
 

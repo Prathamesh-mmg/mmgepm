@@ -180,8 +180,8 @@ export const procurementApi = {
                 api.get('/procurement/material-requests', { params }),
   getMRById:  (id: string) => api.get(`/procurement/material-requests/${id}`),
   createMR:   (data: any)  => api.post('/procurement/material-requests', data),
-  advanceMR:  (id: string, action: string) =>
-                api.post(`/procurement/material-requests/${id}/advance`, { action }),
+  advanceMR:  (id: string, action: string, remark?: string) =>
+                api.post(`/procurement/material-requests/${id}/advance`, { action, remark: remark || undefined }),
   getPOs:     (params?: { projectId?: string }) =>
                 api.get('/procurement/purchase-orders', { params }),
   getVendors: () => api.get('/procurement/vendors'),
