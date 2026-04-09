@@ -31,7 +31,7 @@ export default function UsersPage() {
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users', search],
-    queryFn:  () => usersApi.getAll({ search }).then(r => r.data),
+    queryFn:  () => usersApi.getAll({ search }).then(r => r.data?.items ?? r.data),
   });
 
   const { data: roles } = useQuery({
