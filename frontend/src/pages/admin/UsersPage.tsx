@@ -23,13 +23,15 @@ type CreateUserForm = z.infer<typeof createUserSchema>;
 
 export default function UsersPage() {
   const qc = useQueryClient();
-  const [search,      setSearch]      = useState('');
-  const [showCreate,  setShowCreate]  = useState(false);
-  const [editUser,    setEditUser]    = useState<any>(null);
+  const [search,        setSearch]        = useState('');
+  const [showCreate,    setShowCreate]    = useState(false);
+  const [editUser,      setEditUser]      = useState<any>(null);
+  const [editRolesUser, setEditRolesUser] = useState<any>(null);
+  const [editRoleIds,   setEditRoleIds]   = useState<string[]>([]);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users', search],
-    queryFn:  () => usersApi.getAll({ search }).then(r => r.data),
+    queryFn:  () => usersApi.getAll({ search }).then(r => r.data?.items ?? r.data),
   });
 
   const { data: roles } = useQuery({
@@ -64,11 +66,21 @@ export default function UsersPage() {
   });
 
   const toggleActiveMutation = useMutation({
-    mutationFn: ({ id, isActive }: any) => usersApi.update(id, { isActive }),
+    mutationFn: ({ id }: any) => usersApi.toggleActive(id),
     onSuccess: () => {
       toast.success('User status updated');
       qc.invalidateQueries({ queryKey: ['users'] });
     },
+  });
+
+  const updateRolesMutation = useMutation({
+    mutationFn: ({ id, roles }: { id: string; roles: string[] }) => usersApi.updateRoles(id, roles),
+    onSuccess: () => {
+      toast.success('Roles updated');
+      qc.invalidateQueries({ queryKey: ['users'] });
+      setEditRolesUser(null);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? 'Failed to update roles'),
   });
 
   const toggleRole = (roleName: string) => {
@@ -114,7 +126,7 @@ export default function UsersPage() {
               : !users?.length
                 ? <tr><td colSpan={8} className="text-center py-10 text-[var(--text-secondary)]">No users found</td></tr>
                 : users.map((u: any) => (
-                  <tr key={u.userId}>
+                  <tr key={u.id}>
                     <td>
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full bg-[var(--primary)]/10 flex items-center justify-center font-bold text-[var(--primary)] text-xs">
@@ -128,8 +140,8 @@ export default function UsersPage() {
                     <td className="text-sm">{u.designation ?? '—'}</td>
                     <td>
                       <div className="flex flex-wrap gap-1">
-                        {u.roles?.map((r: any) => (
-                          <span key={r.roleId} className="badge-yellow text-[10px]">{r.roleCode}</span>
+                        {(u.roles as string[] ?? []).map((r: string) => (
+                          <span key={r} className="badge-yellow text-[10px]">{r}</span>
                         ))}
                       </div>
                     </td>
@@ -144,9 +156,16 @@ export default function UsersPage() {
                     <td>
                       <div className="flex gap-1">
                         <button
+                          className="btn-icon btn-sm text-blue-500 hover:text-blue-700"
+                          title="Edit Roles"
+                          onClick={() => { setEditRolesUser(u); setEditRoleIds(u.roles ?? []); }}
+                        >
+                          <Shield className="w-4 h-4" />
+                        </button>
+                        <button
                           className={clsx('btn-icon btn-sm', u.isActive ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-600')}
                           title={u.isActive ? 'Deactivate' : 'Activate'}
-                          onClick={() => toggleActiveMutation.mutate({ id: u.userId, isActive: !u.isActive })}
+                          onClick={() => toggleActiveMutation.mutate({ id: u.id, isActive: !u.isActive })}
                         >
                           {u.isActive ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                         </button>
@@ -158,6 +177,53 @@ export default function UsersPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Edit Roles Modal */}
+      {editRolesUser && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditRolesUser(null)}>
+          <div className="modal max-w-md w-full">
+            <div className="modal-header">
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-[var(--primary)]" />
+                <h2 className="font-semibold">Edit Roles — {editRolesUser.firstName} {editRolesUser.lastName}</h2>
+              </div>
+              <button className="btn-icon btn-ghost" onClick={() => setEditRolesUser(null)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <label className="input-label mb-2 block">Select Roles (one or more)</label>
+              <div className="flex flex-wrap gap-2">
+                {(roles as string[] ?? []).map((r: string) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setEditRoleIds(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r])}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                      editRoleIds.includes(r)
+                        ? 'bg-[var(--primary)] text-[#0e0b08] border-[var(--primary)]'
+                        : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--primary)]'
+                    )}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setEditRolesUser(null)}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={editRoleIds.length === 0 || updateRolesMutation.isPending}
+                onClick={() => updateRolesMutation.mutate({ id: editRolesUser.id, roles: editRoleIds })}
+              >
+                {updateRolesMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : 'Save Roles'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create User Modal */}
       {showCreate && (
@@ -210,19 +276,19 @@ export default function UsersPage() {
                 <div className="input-group col-span-2">
                   <label className="input-label">Roles * (select one or more)</label>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {roles?.map((r: any) => (
+                    {(roles as string[] ?? []).map((r: string) => (
                       <button
-                        key={r.roleId}
+                        key={r}
                         type="button"
-                        onClick={() => toggleRole(r.name)}
+                        onClick={() => toggleRole(r)}
                         className={clsx(
                           'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                          watchedRoles.includes(r.name)
+                          watchedRoles.includes(r)
                             ? 'bg-[var(--primary)] text-[#0e0b08] border-[var(--primary)]'
                             : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--primary)]'
                         )}
                       >
-                        {r.roleName}
+                        {r}
                       </button>
                     ))}
                   </div>

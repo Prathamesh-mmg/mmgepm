@@ -29,6 +29,7 @@
 
     <!-- File handling / Excel -->
     <PackageReference Include="ClosedXML" Version="0.102.2" />
+    <PackageReference Include="net.sf.mpxj" Version="13.12.0" />
 
     <!-- Logging -->
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />

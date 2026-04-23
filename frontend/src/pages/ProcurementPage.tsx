@@ -22,9 +22,6 @@ const STAGES: Record<string, { label: string; badge: string; action?: string; ac
 };
 const STAGE_ORDER = ['Draft','Submitted','PMApproved','SentToPurchase','QuotationReceived','POGenerated','PartDelivered','Delivered','Closed'];
 
-const PRIORITY_BADGE: Record<string, string> = {
-  Low: 'badge-gray', Normal: 'badge-blue', High: 'badge-orange', Urgent: 'badge-red',
-};
 
 export default function ProcurementPage() {
   const qc = useQueryClient();
@@ -52,15 +49,16 @@ export default function ProcurementPage() {
 
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<any>();
 
+  const [advanceRemark, setAdvanceRemark] = useState('');
+
   // Create MR mutation
   const createMutation = useMutation({
     mutationFn: (d: any) => procurementApi.createMR({
       projectId:    d.projectId,
       title:        d.description,
       justification:d.specifications || null,
-      priority:     d.priority || 'Normal',
       requiredDate: d.requiredByDate || null,
-      items: [{ description: d.description, unit: 'Nos', quantity: 1, estimatedCost: null }],
+      items: [{ description: d.description, unit: d.unit || 'Nos', quantity: d.quantity || 1, estimatedCost: null }],
     }),
     onSuccess: () => {
       toast.success('Material Request created — status: Draft');
@@ -72,11 +70,12 @@ export default function ProcurementPage() {
 
   // Advance MR status mutation
   const advanceMutation = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: string }) =>
-      procurementApi.advanceMR(id, action),
+    mutationFn: ({ id, action, remark }: { id: string; action: string; remark?: string }) =>
+      procurementApi.advanceMR(id, action, remark),
     onSuccess: (res) => {
       toast.success(`MR advanced to: ${STAGES[res.data?.status]?.label || 'next stage'}`);
       qc.invalidateQueries({ queryKey: ['material-requests'] });
+      setAdvanceRemark('');
       // Refresh selected MR with updated data
       if (selectedMR) setSelectedMR((prev: any) => ({ ...prev, ...res.data }));
     },
@@ -168,16 +167,16 @@ export default function ProcurementPage() {
               <thead>
                 <tr>
                   <th>MR Number</th><th>Title</th><th>Project</th>
-                  <th>Priority</th><th>Required By</th><th>Status</th><th></th>
+                  <th>Required By</th><th>Status</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {mrsLoading
-                  ? <tr><td colSpan={7} className="text-center py-10">
+                  ? <tr><td colSpan={6} className="text-center py-10">
                       <Loader2 className="w-5 h-5 animate-spin mx-auto" style={{color:'var(--primary)'}} />
                     </td></tr>
                   : !filteredMRs.length
-                    ? <tr><td colSpan={7} className="py-14 text-center">
+                    ? <tr><td colSpan={6} className="py-14 text-center">
                         <div className="flex flex-col items-center gap-3">
                           <ShoppingCart className="w-10 h-10 opacity-20" />
                           <p style={{color:'var(--text-secondary)'}}>
@@ -197,11 +196,6 @@ export default function ProcurementPage() {
                           <p className="truncate">{mr.title || mr.description}</p>
                         </td>
                         <td className="text-sm">{mr.projectName}</td>
-                        <td>
-                          <span className={clsx(PRIORITY_BADGE[mr.priority] || 'badge-gray', 'text-xs')}>
-                            {mr.priority}
-                          </span>
-                        </td>
                         <td className="text-xs" style={{color:'var(--text-secondary)'}}>
                           {mr.requiredDate ? format(new Date(mr.requiredDate), 'dd MMM yyyy') : '—'}
                         </td>
@@ -291,11 +285,14 @@ export default function ProcurementPage() {
                     {...register('description', { required: 'Description is required' })} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Priority</label>
-                  <select className="form-select" defaultValue="Normal" {...register('priority')}>
-                    <option>Low</option><option>Normal</option>
-                    <option>High</option><option>Urgent</option>
-                  </select>
+                  <label className="form-label">Quantity</label>
+                  <input type="number" min="1" className="form-input" defaultValue={1}
+                    {...register('quantity', { valueAsNumber: true })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Unit</label>
+                  <input type="text" className="form-input" defaultValue="Nos"
+                    placeholder="e.g. Nos, kg, m" {...register('unit')} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Required By Date</label>
@@ -380,15 +377,9 @@ export default function ProcurementPage() {
 
               {/* MR Details grid */}
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
+                <div className="col-span-2">
                   <p className="text-xs font-medium mb-1" style={{color:'var(--text-secondary)'}}>Title / Description</p>
                   <p className="font-medium">{selectedMR.title || selectedMR.description || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium mb-1" style={{color:'var(--text-secondary)'}}>Priority</p>
-                  <span className={clsx(PRIORITY_BADGE[selectedMR.priority] || 'badge-gray', 'text-xs')}>
-                    {selectedMR.priority}
-                  </span>
                 </div>
                 <div>
                   <p className="text-xs font-medium mb-1" style={{color:'var(--text-secondary)'}}>Required By</p>
@@ -435,48 +426,62 @@ export default function ProcurementPage() {
               )}
             </div>
 
-            <div className="modal-footer">
-              {/* Delete button — only for Draft */}
-              {selectedMR.status === 'Draft' && (
-                <button
-                  className="btn-outline mr-auto"
-                  style={{borderColor:'var(--primary)', color:'var(--primary)'}}
-                  onClick={() => {
-                    if (confirm(`Delete MR "${selectedMR.mrNumber}"? This cannot be undone.`)) {
-                      deleteMRMutation.mutate(selectedMR.id);
-                    }
-                  }}
-                  disabled={deleteMRMutation.isPending}
-                >
-                  <Trash2 className="w-4 h-4" />
-                  {deleteMRMutation.isPending ? 'Deleting…' : 'Delete MR'}
-                </button>
-              )}
-
-              <button className="btn-outline" onClick={() => setSelectedMR(null)}>Close</button>
-
-              {/* Advance button — hidden for Closed */}
+            <div className="modal-footer flex-col gap-3 items-stretch">
+              {/* Advance remark — shown when there is an action available */}
               {selectedMR.status !== 'Closed' && STAGES[selectedMR.status]?.action && (
-                <button
-                  className="btn-primary"
-                  onClick={() => advanceMutation.mutate({
-                    id:     selectedMR.id,
-                    action: STAGES[selectedMR.status].action!,
-                  })}
-                  disabled={advanceMutation.isPending}
-                >
-                  {advanceMutation.isPending
-                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Updating…</>
-                    : <><CheckCircle className="w-4 h-4" /> {STAGES[selectedMR.status].actionLabel}</>
-                  }
-                </button>
+                <textarea
+                  className="form-input w-full text-sm resize-none"
+                  rows={2}
+                  placeholder="Remark (optional)"
+                  value={advanceRemark}
+                  onChange={e => setAdvanceRemark(e.target.value)}
+                />
               )}
 
-              {selectedMR.status === 'Closed' && (
-                <span className="badge-gray px-3 py-1.5 text-sm font-medium">
-                  ✓ Closed — no further action
-                </span>
-              )}
+              <div className="flex items-center gap-2 w-full">
+                {/* Delete button — only for Draft */}
+                {selectedMR.status === 'Draft' && (
+                  <button
+                    className="btn-outline mr-auto"
+                    style={{borderColor:'var(--primary)', color:'var(--primary)'}}
+                    onClick={() => {
+                      if (confirm(`Delete MR "${selectedMR.mrNumber}"? This cannot be undone.`)) {
+                        deleteMRMutation.mutate(selectedMR.id);
+                      }
+                    }}
+                    disabled={deleteMRMutation.isPending}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {deleteMRMutation.isPending ? 'Deleting…' : 'Delete MR'}
+                  </button>
+                )}
+
+                <button className="btn-outline ml-auto" onClick={() => setSelectedMR(null)}>Close</button>
+
+                {/* Advance button — hidden for Closed */}
+                {selectedMR.status !== 'Closed' && STAGES[selectedMR.status]?.action && (
+                  <button
+                    className="btn-primary"
+                    onClick={() => advanceMutation.mutate({
+                      id:     selectedMR.id,
+                      action: STAGES[selectedMR.status].action!,
+                      remark: advanceRemark,
+                    })}
+                    disabled={advanceMutation.isPending}
+                  >
+                    {advanceMutation.isPending
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Updating…</>
+                      : <><CheckCircle className="w-4 h-4" /> {STAGES[selectedMR.status].actionLabel}</>
+                    }
+                  </button>
+                )}
+
+                {selectedMR.status === 'Closed' && (
+                  <span className="badge-gray px-3 py-1.5 text-sm font-medium">
+                    ✓ Closed — no further action
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>

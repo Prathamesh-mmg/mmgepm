@@ -1,7 +1,7 @@
 // src/pages/InventoryPage.tsx
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, Plus, ArrowLeftRight, Loader2, X, Search } from 'lucide-react';
+import { Package, Plus, ArrowLeftRight, Loader2, X, Search, ArrowDown } from 'lucide-react';
 import { inventoryApi, projectsApi, api } from '../lib/api';
 import { format } from 'date-fns';
 import clsx from 'clsx';
@@ -220,9 +220,9 @@ export default function InventoryPage() {
             </thead>
             <tbody>
               {ledgerLoading
-                ? <tr><td colSpan={7} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto" style={{color:'var(--primary)'}} /></td></tr>
+                ? <tr><td colSpan={8} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin mx-auto" style={{color:'var(--primary)'}} /></td></tr>
                 : !stockSummary.length
-                  ? <tr><td colSpan={7} className="py-12 text-center" style={{color:'var(--text-secondary)'}}>
+                  ? <tr><td colSpan={8} className="py-12 text-center" style={{color:'var(--text-secondary)'}}>
                       No stock entries yet. Click <strong>Record Receipt</strong> to add stock.
                     </td></tr>
                   : stockSummary.map((s: any, i: number) => (
@@ -240,6 +240,16 @@ export default function InventoryPage() {
                           ? <span className="badge-red">Low Stock</span>
                           : <span className="badge-green">OK</span>
                         }
+                      </td>
+                      <td>
+                        <button
+                          className="btn-sm btn-outline flex items-center gap-1 text-xs"
+                          disabled={s.balance <= 0 || !projectId}
+                          title={s.balance <= 0 ? 'No stock available' : 'Issue material'}
+                          onClick={() => { setIssueTarget(s); setIssueQty(''); setIssueNotes(''); setShowIssue(true); }}
+                        >
+                          <ArrowDown className="w-3 h-3" /> Issue
+                        </button>
                       </td>
                     </tr>
                   ))

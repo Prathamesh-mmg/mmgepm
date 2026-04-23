@@ -21,6 +21,8 @@ const InventoryPage       = lazy(() => import('./pages/InventoryPage'));
 const ResourcesPage       = lazy(() => import('./pages/ResourcesPage'));
 const BudgetPage          = lazy(() => import('./pages/BudgetPage'));
 const RisksPage           = lazy(() => import('./pages/RisksPage'));
+const LabourPage          = lazy(() => import('./pages/LabourPage'));
+const DprPage             = lazy(() => import('./pages/DprPage'));
 const UsersPage           = lazy(() => import('./pages/admin/UsersPage'));
 const SettingsPage        = lazy(() => import('./pages/admin/SettingsPage'));
 const ProfilePage         = lazy(() => import('./pages/ProfilePage'));
@@ -121,6 +123,14 @@ export default function App() {
 
             <Route path="risks/*" element={
               <Suspense fallback={<PageFallback />}><RisksPage /></Suspense>
+            } />
+
+            <Route path="labour/*" element={
+              <Suspense fallback={<PageFallback />}><LabourPage /></Suspense>
+            } />
+
+            <Route path="dpr/*" element={
+              <Suspense fallback={<PageFallback />}><DprPage /></Suspense>
             } />
 
             <Route path="profile" element={

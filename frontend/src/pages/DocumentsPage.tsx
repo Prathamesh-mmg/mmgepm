@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
@@ -35,8 +36,22 @@ export default function DocumentsPage() {
   const qc = useQueryClient();
   const { hasRole } = useAuthStore();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [searchParams] = useSearchParams();
 
-  const [tab, setTab]             = useState<Tab>('center');
+  const [tab, setTab]             = useState<Tab>(() => {
+    const t = searchParams.get('tab');
+    if (t === 'drawings') return 'drawings';
+    if (t === 'changes')  return 'changes';
+    return 'center';
+  });
+
+  // Sync tab with URL query param when sidebar navigation changes it
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t === 'drawings') setTab('drawings');
+    else if (t === 'changes') setTab('changes');
+    else setTab('center');
+  }, [searchParams]);
   const [projectId, setProjectId] = useState('');
   const [search, setSearch]       = useState('');
   const [selectedFolder, setFolder] = useState('');
@@ -81,8 +96,8 @@ export default function DocumentsPage() {
 
   const { data: drawings } = useQuery({
     queryKey: ['drawings', projectId, search],
-    queryFn:  () => api.get('/documents', {
-      params: { projectId: projectId||undefined, type:'Drawing', search: search||undefined }
+    queryFn:  () => api.get('/drawings', {
+      params: { projectId: projectId||undefined }
     }).then(r => r.data),
     enabled: tab === 'drawings',
   });
@@ -108,15 +123,18 @@ export default function DocumentsPage() {
   });
 
   const createFolderMutation = useMutation({
-    mutationFn: () => api.post('/documents/folders', {
-      name: folderName, parentId: selectedFolder||undefined, projectId: projectId||undefined
-    }),
+    mutationFn: () => {
+      if (!projectId) throw new Error('Please select a project first');
+      return api.post('/documents/folders', {
+        name: folderName, parentId: selectedFolder||undefined, projectId
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey:['folders'] });
       toast.success('Folder created');
       setNewFolder(false); setFolderName('');
     },
-    onError: () => toast.error('Failed to create folder'),
+    onError: (e: any) => toast.error(e.message || e.response?.data?.message || 'Failed to create folder'),
   });
 
   const uploadMutation = useMutation({
@@ -134,6 +152,7 @@ export default function DocumentsPage() {
       qc.invalidateQueries({ queryKey:['docs'] });
       toast.success('File uploaded');
     },
+    onError: (e: any) => toast.error(e.message || e.response?.data?.message || 'Upload failed'),
   });
 
   const createDrawingMutation = useMutation({
@@ -451,23 +470,29 @@ export default function DocumentsPage() {
                 <tbody>
                   {drawList.map((d:any) => (
                     <tr key={d.id}>
-                      <td className="font-medium text-sm">{d.name || d.title}</td>
-                      <td><span className="badge badge-blue text-xs">{d.category}</span></td>
+                      <td className="font-medium text-sm">{d.drawingNumber || d.name || d.title}</td>
+                      <td><span className="badge badge-blue text-xs">{d.discipline || d.category || '—'}</span></td>
                       <td className="font-mono text-xs font-medium text-gray-600">{d.revision || 'R0'}</td>
                       <td>
                         <span className={`badge text-xs ${STATUS_COLORS[d.state||d.status]||'badge-gray'}`}>
                           {d.state || d.status || 'Draft'}
                         </span>
                       </td>
-                      <td className="text-sm text-gray-500">{d.receivedFrom || '—'}</td>
+                      <td className="text-sm text-gray-500">{d.receivedFrom || d.scale || '—'}</td>
                       <td className="text-xs text-gray-400">{d.createdAt ? format(new Date(d.createdAt),'dd MMM yyyy') : '—'}</td>
                       <td>
                         <div className="flex items-center gap-1.5">
                           {d.fileUrl && (
-                            <a href={d.fileUrl} target="_blank" rel="noreferrer"
-                              className="p-1.5 rounded hover:bg-gray-100 text-gray-500" title="Download">
-                              <Download className="w-3.5 h-3.5" />
-                            </a>
+                            <>
+                              <a href={d.fileUrl} target="_blank" rel="noreferrer"
+                                className="p-1.5 rounded hover:bg-blue-50 text-gray-500 hover:text-blue-600" title="View drawing">
+                                <Eye className="w-3.5 h-3.5" />
+                              </a>
+                              <a href={d.fileUrl} download
+                                className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700" title="Download">
+                                <Download className="w-3.5 h-3.5" />
+                              </a>
+                            </>
                           )}
                           {/* DM-EXT-3: versions */}
                           <button onClick={() => { setDrawing(d); setVersions(true); }}

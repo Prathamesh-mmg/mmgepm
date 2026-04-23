@@ -55,8 +55,9 @@ public class BudgetController : ControllerBase
     private readonly IBudgetService _budget;
     private readonly ICurrentUserService _cu;
     private readonly IReportService _reports;
-    public BudgetController(IBudgetService budget, ICurrentUserService cu, IReportService reports)
-    { _budget = budget; _cu = cu; _reports = reports; }
+    private readonly AppDbContext _db;
+    public BudgetController(IBudgetService budget, ICurrentUserService cu, IReportService reports, AppDbContext db)
+    { _budget = budget; _cu = cu; _reports = reports; _db = db; }
 
     [HttpGet("project/{projectId:guid}")]
     public async Task<IActionResult> GetBudgets(Guid projectId)
@@ -97,6 +98,40 @@ public class BudgetController : ControllerBase
     {
         var bytes = await _reports.ExportBudgetToExcelAsync(projectId);
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "budget.xlsx");
+    }
+
+    [HttpGet("dashboard")]
+    public async Task<IActionResult> GetDashboard([FromQuery] Guid? projectId)
+    {
+        var q = _db.ProjectBudgets.Include(b => b.Project).Where(b => !b.IsDeleted);
+        if (projectId.HasValue) q = q.Where(b => b.ProjectId == projectId.Value);
+        var budgets = await q.ToListAsync();
+
+        var wbsQ = _db.BudgetWBSItems.Where(w => !w.IsDeleted);
+        if (projectId.HasValue) wbsQ = wbsQ.Where(w => w.ProjectId == projectId.Value);
+        var wbsItems = await wbsQ.ToListAsync();
+
+        var totalBudget    = budgets.Sum(b => b.TotalApprovedBudget);
+        var totalCommitted = wbsItems.Sum(w => w.CommittedAmount);
+        var totalExpended  = wbsItems.Sum(w => w.ExpendedAmount);
+        var balance        = totalBudget - totalExpended;
+        var utilization    = totalBudget > 0 ? Math.Round((totalExpended / totalBudget) * 100, 1) : 0;
+
+        var categoryBreakdown = wbsItems
+            .GroupBy(w => w.Description.Contains("|") ? w.Description.Split('|')[0].Trim() : w.Description)
+            .Select(g => new {
+                category  = g.Key,
+                budgeted  = g.Sum(w => w.BudgetAmount),
+                committed = g.Sum(w => w.CommittedAmount),
+                expended  = g.Sum(w => w.ExpendedAmount),
+            }).ToList();
+
+        return Ok(new {
+            totalBudget, totalCommitted, totalExpended,
+            balance, utilizationPct = utilization,
+            categoryBreakdown,
+            budgetCount = budgets.Count,
+        });
     }
 }
 
@@ -216,6 +251,40 @@ public class InventoryController : ControllerBase
         [FromQuery] decimal? cost, [FromQuery] string? notes)
         => Ok(await _inv.AddStockEntryAsync(materialId, projectId, type, qty, cost, notes, _cu.UserId));
 
+    [HttpGet("materials/categories")]
+    public async Task<IActionResult> GetCategories()
+    {
+        var cats = await _db.MaterialCategories.Where(c => !c.IsDeleted)
+            .Select(c => new { c.Id, c.Name, c.Code }).ToListAsync();
+        return Ok(cats);
+    }
+
+    [HttpPost("materials")]
+    public async Task<IActionResult> CreateMaterial([FromBody] CreateMaterialRequest req)
+    {
+        var count = await _db.Materials.CountAsync() + 1;
+        var mat = new Material
+        {
+            Name         = req.Name,
+            MaterialCode = req.MaterialCode ?? $"MAT-{count:D5}",
+            CategoryId   = req.CategoryId,
+            Unit         = req.Unit ?? "Nos",
+            Description  = req.Description,
+            Brand        = req.Brand,
+            ReorderLevel = req.ReorderLevel,
+            StandardCost = req.StandardCost,
+            CurrentStock = 0,
+            IsActive     = true,
+            CreatedById  = _cu.UserId,
+        };
+        _db.Materials.Add(mat);
+        await _db.SaveChangesAsync();
+        var cat = mat.CategoryId.HasValue ? await _db.MaterialCategories.FindAsync(mat.CategoryId.Value) : null;
+        return Ok(new MaterialDto(mat.Id, mat.Name, mat.MaterialCode, cat?.Name,
+            mat.Unit, mat.Description, mat.Brand, mat.CurrentStock,
+            mat.ReorderLevel, mat.StandardCost, false));
+    }
+
     [HttpGet("export")]
     public async Task<IActionResult> Export([FromQuery] Guid? projectId)
     {
@@ -310,11 +379,46 @@ public class DocumentsController : ControllerBase
 {
     private readonly IDocumentService _docs;
     private readonly ICurrentUserService _cu;
-    public DocumentsController(IDocumentService docs, ICurrentUserService cu) { _docs = docs; _cu = cu; }
+    private readonly AppDbContext _db;
+    public DocumentsController(IDocumentService docs, ICurrentUserService cu, AppDbContext db) { _docs = docs; _cu = cu; _db = db; }
 
     [HttpGet("folders")]
-    public async Task<IActionResult> GetFolders([FromQuery] Guid projectId)
-        => Ok(await _docs.GetFoldersAsync(projectId));
+    public async Task<IActionResult> GetFolders([FromQuery] Guid projectId, [FromQuery] Guid? parentId)
+    {
+        var folders = await _db.ProjectFolders
+            .Where(f => f.ProjectId == projectId && !f.IsDeleted && f.ParentId == parentId)
+            .OrderBy(f => f.SortOrder).ThenBy(f => f.Name)
+            .Select(f => new { f.Id, f.Name, f.ParentId, f.SortOrder,
+                DocumentCount = f.Documents.Count(d => !d.IsDeleted) })
+            .ToListAsync();
+        return Ok(folders);
+    }
+
+    [HttpPost("folders")]
+    public async Task<IActionResult> CreateFolder([FromBody] CreateFolderRequest req)
+    {
+        var folder = new ProjectFolder
+        {
+            ProjectId   = req.ProjectId,
+            ParentId    = req.ParentId,
+            Name        = req.Name,
+            SortOrder   = 0,
+            CreatedById = _cu.UserId,
+        };
+        _db.ProjectFolders.Add(folder);
+        await _db.SaveChangesAsync();
+        return Ok(new { folder.Id, folder.Name, folder.ParentId, folder.SortOrder, DocumentCount = 0 });
+    }
+
+    [HttpPatch("drawings/{id:guid}/release")]
+    public async Task<IActionResult> ReleaseDrawing(Guid id)
+    {
+        var d = await _db.Drawings.FindAsync(id) ?? throw new KeyNotFoundException("Drawing not found");
+        d.Status    = "Site Drawings";
+        d.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { d.Id, d.Status });
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetDocs(
@@ -2092,3 +2196,5 @@ public class BudgetLinesController : ControllerBase
 
 public record AddCommitmentRequest(DateTime CommitmentDate, decimal Amount, string? Notes);
 public record AddExpenditureRequest(DateTime PaymentDate, decimal PaymentAmount, string TransactionRef, string? Notes);
+public record CreateFolderRequest(string Name, Guid ProjectId, Guid? ParentId);
+public record CreateMaterialRequest(string Name, string? MaterialCode, Guid? CategoryId, string? Unit, string? Description, string? Brand, decimal? ReorderLevel, decimal? StandardCost);

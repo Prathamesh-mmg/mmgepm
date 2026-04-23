@@ -84,6 +84,7 @@ public class AppDbContext : DbContext
     public DbSet<TaskDelay>        TaskDelays         => Set<TaskDelay>();
     public DbSet<TaskComment>      TaskComments       => Set<TaskComment>();
     public DbSet<TaskDependency>   TaskDependencies   => Set<TaskDependency>();
+    public DbSet<MppImportLog>     MppImportLogs      => Set<MppImportLog>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -156,6 +157,7 @@ public class AppDbContext : DbContext
         mb.Entity<NegotiationLog>().ToTable("NegotiationLogs", "Procurement");
         mb.Entity<TaskDelay>().ToTable("TaskDelays", "Project");
         mb.Entity<TaskDependency>().ToTable("TaskDependencies", "Project");
+        mb.Entity<MppImportLog>().ToTable("MppImportLogs", "Project");
         mb.Entity<TaskDependency>()
             .HasIndex(td => new { td.TaskId, td.PredecessorId })
             .IsUnique();

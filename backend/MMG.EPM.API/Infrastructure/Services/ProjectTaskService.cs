@@ -409,10 +409,27 @@ public class TaskService : ITaskService
         return count;
     }
 
-    // Propagate progress up the task hierarchy
+    // Propagate progress up the task hierarchy and update project overall progress
     private async Task PropagateProgressAsync(ProjectTask task)
     {
-        if (task.ParentTaskId == null) return;
+        if (task.ParentTaskId == null)
+        {
+            // Root-level task — recalculate project overall progress
+            var rootTasks = await _db.Tasks
+                .Where(t => t.ProjectId == task.ProjectId && t.ParentTaskId == null && !t.IsDeleted)
+                .ToListAsync();
+            if (rootTasks.Any())
+            {
+                var project = await _db.Projects.FindAsync(task.ProjectId);
+                if (project != null)
+                {
+                    project.OverallProgress = Math.Round(rootTasks.Average(t => t.ProgressPercentage), 1);
+                    project.UpdatedAt = DateTime.UtcNow;
+                    await _db.SaveChangesAsync();
+                }
+            }
+            return;
+        }
         var siblings = await _db.Tasks
             .Where(t => t.ParentTaskId == task.ParentTaskId && !t.IsDeleted)
             .ToListAsync();
