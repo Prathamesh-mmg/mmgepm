@@ -164,7 +164,7 @@ public class ProjectService : IProjectService
         return await _db.Tasks
             .Include(t => t.Assignee).Include(t => t.ParentTask)
             .Where(t => t.ProjectId == projectId && !t.IsDeleted)
-            .OrderBy(t => t.WbsCode).ThenBy(t => t.Level).ThenBy(t => t.SortOrder)
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Level).ThenBy(t => t.Name)
             .Select(t => MapTask(t)).ToListAsync();
     }
 
@@ -238,7 +238,7 @@ public class TaskService : ITaskService
         if (!string.IsNullOrEmpty(status)) q = q.Where(t => t.Status == status);
         if (!string.IsNullOrEmpty(search)) q = q.Where(t => t.Name.Contains(search));
         if (parentId.HasValue) q = q.Where(t => t.ParentTaskId == parentId.Value);
-        return await q.OrderBy(t => t.WbsCode).ThenBy(t => t.Level).ThenBy(t => t.SortOrder)
+        return await q.OrderBy(t => t.SortOrder).ThenBy(t => t.Level).ThenBy(t => t.Name)
             .Select(t => MapTask(t)).ToListAsync();
     }
 

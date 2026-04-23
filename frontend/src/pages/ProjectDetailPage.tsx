@@ -331,15 +331,7 @@ export default function ProjectDetailPage() {
                 Click any task bar to see details. Use zoom controls to change the view.
               </p>
             </div>
-            {canManage && (
-              <button
-                onClick={() => {
-                  if (taskList.length > 0) setDepTaskId(taskList[0].id);
-                }}
-                className="btn-ghost text-sm flex items-center gap-1.5">
-                🔗 Manage Dependencies
-              </button>
-            )}
+            {/* Dependency Manager button removed per observation #12 — not in use */}
           </div>
 
           {!ganttData ? (

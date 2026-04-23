@@ -33,7 +33,7 @@ public interface IProcurementService
     Task<PagedResult<MaterialRequestDto>> GetMRsAsync(Guid? projectId, string? status, int page, int pageSize);
     Task<MaterialRequestDto?> GetMRByIdAsync(Guid id);
     Task<MaterialRequestDto> CreateMRAsync(CreateMRRequest request, Guid userId);
-    Task<MaterialRequestDto> AdvanceMRAsync(Guid id, string action, Guid userId);
+    Task<MaterialRequestDto> AdvanceMRAsync(Guid id, string action, Guid userId, string? remark = null);
     Task<List<PurchaseOrderDto>> GetPOsAsync(Guid? projectId);
     Task<List<VendorDto>> GetVendorsAsync();
 }
@@ -421,7 +421,7 @@ public class ProcurementService : IProcurementService
         return (await GetMRByIdAsync(mr.Id))!;
     }
 
-    public async Task<MaterialRequestDto> AdvanceMRAsync(Guid id, string action, Guid userId)
+    public async Task<MaterialRequestDto> AdvanceMRAsync(Guid id, string action, Guid userId, string? remark = null)
     {
         var mr = await _db.MaterialRequests.FindAsync(id) ?? throw new KeyNotFoundException("MR not found");
         switch (action)
@@ -434,8 +434,11 @@ public class ProcurementService : IProcurementService
             case "PartDelivery":  mr.Status = "PartDelivered"; break;
             case "FullDelivery":  mr.Status = "Delivered"; break;
             case "Close":         mr.Status = "Closed"; break;
-            case "Reject":        mr.Status = "Draft"; mr.RejectionReason = "Rejected by approver"; break;
+            case "Reject":        mr.Status = "Draft"; mr.RejectionReason = remark ?? "Rejected by approver"; break;
         }
+        // Store the remark (repurposing RejectionReason as general last-action remark field)
+        if (!string.IsNullOrWhiteSpace(remark) && action != "Reject")
+            mr.RejectionReason = remark;
         mr.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return (await GetMRByIdAsync(id))!;
@@ -462,7 +465,8 @@ public class ProcurementService : IProcurementService
     private static MaterialRequestDto MapMR(MaterialRequest m) => new(
         m.Id, m.MrNumber, m.Title, m.Justification, m.Priority, m.RequiredDate, m.Status,
         m.ProjectId, m.Project?.Name ?? "", m.RequestedBy?.FullName ?? "", m.CreatedAt,
-        m.Items?.Select(i => new MRLineItemDto(i.Id, i.Description, i.Unit, i.Quantity, i.EstimatedCost, i.DeliveredQuantity)).ToList() ?? new());
+        m.Items?.Select(i => new MRLineItemDto(i.Id, i.Description, i.Unit, i.Quantity, i.EstimatedCost, i.DeliveredQuantity)).ToList() ?? new(),
+        m.RejectionReason);
 }
 
 // ─── Inventory Service ──────────────────────────────────────────────────

@@ -58,6 +58,7 @@ export default function ProcurementPage() {
       title:        d.description,
       justification:d.specifications || null,
       requiredDate: d.requiredByDate || null,
+      priority:     'Normal',   // default, field hidden from UI per obs #14
       items: [{ description: d.description, unit: d.unit || 'Nos', quantity: d.quantity || 1, estimatedCost: null }],
     }),
     onSuccess: () => {
@@ -394,6 +395,14 @@ export default function ProcurementPage() {
                     <p className="text-xs font-medium mb-1" style={{color:'var(--text-secondary)'}}>Justification / Specs</p>
                     <p className="p-2 rounded-lg text-sm" style={{background:'var(--bg-secondary)'}}>
                       {selectedMR.justification}
+                    </p>
+                  </div>
+                )}
+                {selectedMR.lastRemark && (
+                  <div className="col-span-2">
+                    <p className="text-xs font-medium mb-1" style={{color:'var(--text-secondary)'}}>Last Remark</p>
+                    <p className="p-2 rounded-lg text-sm border border-yellow-200 bg-yellow-50 text-yellow-800">
+                      💬 {selectedMR.lastRemark}
                     </p>
                   </div>
                 )}
