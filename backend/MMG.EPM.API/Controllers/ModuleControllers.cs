@@ -166,7 +166,7 @@ public class ProcurementController : ControllerBase
 
     [HttpPost("material-requests/{id:guid}/advance")]
     public async Task<IActionResult> AdvanceMR(Guid id, [FromBody] AdvanceMRRequest req)
-        => Ok(await _proc.AdvanceMRAsync(id, req.Action, _cu.UserId));
+        => Ok(await _proc.AdvanceMRAsync(id, req.Action, _cu.UserId, req.Remark));
 
     [HttpDelete("material-requests/{id:guid}")]
     public async Task<IActionResult> DeleteMR(Guid id)
@@ -467,15 +467,27 @@ public class DrawingsController : ControllerBase
             .Include(d => d.UploadedBy)
             .Where(d => !d.IsDeleted);
         if (projectId.HasValue) q = q.Where(d => d.ProjectId == projectId.Value);
-        var items = await q.OrderByDescending(d => d.CreatedAt)
-            .Select(d => new {
-                d.Id, d.DrawingNumber, d.Title, d.Discipline,
-                d.Scale, d.Revision, d.Status,
-                ProjectName  = d.Project.Name,
-                UploadedBy   = d.UploadedBy.FullName,
-                d.CreatedAt,
-                d.FileAttachmentId
-            }).ToListAsync();
+        var drawings = await q.OrderByDescending(d => d.CreatedAt).ToListAsync();
+
+        // Resolve fileUrl from FileAttachments for each drawing that has one
+        var attIds = drawings
+            .Where(d => d.FileAttachmentId.HasValue)
+            .Select(d => d.FileAttachmentId!.Value)
+            .Distinct().ToList();
+        var attachments = await _db.FileAttachments
+            .Where(a => attIds.Contains(a.Id))
+            .ToDictionaryAsync(a => a.Id, a => a.FileUrl);
+
+        var items = drawings.Select(d => new {
+            d.Id, d.DrawingNumber, d.Title, d.Discipline,
+            d.Scale, d.Revision, d.Status,
+            ProjectName  = d.Project?.Name ?? "",
+            UploadedBy   = d.UploadedBy?.FullName ?? "",
+            d.CreatedAt,
+            d.FileAttachmentId,
+            fileUrl = d.FileAttachmentId.HasValue && attachments.TryGetValue(d.FileAttachmentId.Value, out var url)
+                      ? url : null,
+        });
         return Ok(items);
     }
 

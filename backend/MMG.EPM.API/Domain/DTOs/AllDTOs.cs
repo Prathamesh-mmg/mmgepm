@@ -121,7 +121,8 @@ public record MaterialRequestDto(
     string Priority, DateTime? RequiredDate, string Status,
     Guid ProjectId, string ProjectName,
     string RequestedByName, DateTime CreatedAt,
-    List<MRLineItemDto> Items);
+    List<MRLineItemDto> Items,
+    string? LastRemark = null);
 
 public record MRLineItemDto(
     Guid Id, string Description, string Unit,
@@ -135,7 +136,7 @@ public record CreateMRRequest(
 public record CreateMRItemRequest(
     string Description, string Unit, decimal Quantity, decimal? EstimatedCost);
 
-public record AdvanceMRRequest(string Action);
+public record AdvanceMRRequest(string Action, string? Remark = null);
 
 public record PurchaseOrderDto(
     Guid Id, string PoNumber, string VendorName, string ProjectName,

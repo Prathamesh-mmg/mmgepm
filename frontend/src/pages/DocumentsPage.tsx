@@ -582,7 +582,14 @@ export default function DocumentsPage() {
             <div className="card-header">
               <span className="font-medium text-sm">Change Requests</span>
               {canManage && (
-                <button className="btn-primary btn-sm flex items-center gap-1" onClick={() => setShowCRForm(true)}>
+                <button
+                  className="btn-primary btn-sm flex items-center gap-1"
+                  onClick={() => {
+                    if (!projectId) { toast.error('Please select a project first'); return; }
+                    setShowCRForm(true);
+                  }}
+                  title={!projectId ? 'Select a project to create a Change Request' : 'New Change Request'}
+                >
                   <Plus className="w-3.5 h-3.5" /> New CR
                 </button>
               )}
@@ -698,6 +705,13 @@ export default function DocumentsPage() {
             </div>
             <div className="modal-body space-y-4">
               <div className="form-group">
+                <label className="form-label">Project *</label>
+                <select className="form-select" value={projectId} onChange={e => setProjectId(e.target.value)} required>
+                  <option value="">Select project…</option>
+                  {(projects||[]).map((p:any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
                 <label className="form-label">Title *</label>
                 <input className="form-input" placeholder="Change request title"
                   value={crForm.title} onChange={e => setCRForm(f => ({...f, title: e.target.value}))} />
@@ -729,7 +743,7 @@ export default function DocumentsPage() {
               <button className="btn-outline" onClick={() => setShowCRForm(false)}>Cancel</button>
               <button
                 className="btn-primary"
-                disabled={!crForm.title || createCRMutation.isPending}
+                disabled={!crForm.title || !projectId || createCRMutation.isPending}
                 onClick={() => createCRMutation.mutate({
                   projectId: projectId,
                   title: crForm.title,
