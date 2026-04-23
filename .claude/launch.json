@@ -1,0 +1,21 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mmg-epm-frontend",
+      "type": "node",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/frontend",
+      "port": 5173
+    },
+    {
+      "name": "mmg-epm-backend",
+      "type": "coreclr",
+      "runtimeExecutable": "C:\\Program Files\\dotnet\\dotnet.exe",
+      "runtimeArgs": ["run", "--project", "MMG.EPM.API.csproj"],
+      "cwd": "${workspaceFolder}/backend/MMG.EPM.API",
+      "port": 5000
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+node_modules/
+
+# Local agent/editor machine-specific settings
+.claude/settings.local.json
+
+# Runtime logs and generated build artifacts
+backend/MMG.EPM.API/Logs/
+backend/MMG.EPM.API/bin/
+backend/MMG.EPM.API/obj/
+frontend/dist/
