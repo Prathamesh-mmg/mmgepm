@@ -244,7 +244,7 @@ export const dashboardApi = {
 
 // ── Users ──────────────────────────────────────────────────────
 export const usersApi = {
-  getAll:       (params?: { search?: string; role?: string; isActive?: boolean; page?: number }) =>
+  getAll:       (params?: { search?: string; role?: string; isActive?: boolean; page?: number; pageSize?: number }) =>
                   api.get('/users', { params }),
   getById:      (id: string) => api.get(`/users/${id}`),
   me:           () => api.get('/users/me'),

@@ -147,7 +147,7 @@ export default function GanttChart({ tasks, projectStart, projectEnd, readOnly =
 
   const todayX = dateToX(new Date());
 
-  // Dependency arrows
+  // Dependency arrows — orthogonal (right-angle) elbow connectors per obs #28
   const arrows = useMemo(() => {
     const result: { path: string; isCritical: boolean; key: string }[] = [];
     visibleTasks.forEach((task, tIdx) => {
@@ -159,10 +159,14 @@ export default function GanttChart({ tasks, projectStart, projectEnd, readOnly =
         const x1 = dateToX(new Date(pred.endDate)) + dayWidth;
         const y1 = predIdx * ROW_HEIGHT + HEADER_HEIGHT + ROW_HEIGHT / 2;
         const x2 = dateToX(new Date(task.startDate));
-        const y2 = tIdx * ROW_HEIGHT + HEADER_HEIGHT + ROW_HEIGHT / 2;
-        const mx = (x1 + x2) / 2;
+        const y2 = tIdx  * ROW_HEIGHT + HEADER_HEIGHT + ROW_HEIGHT / 2;
+        // Build orthogonal elbow: right → down/up → right
+        const midX = x1 + Math.max((x2 - x1) / 2, 8);
+        const path = y1 === y2
+          ? `M${x1},${y1} L${x2},${y2}`                          // same row — just a line
+          : `M${x1},${y1} L${midX},${y1} L${midX},${y2} L${x2},${y2}`; // elbow
         result.push({
-          path: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`,
+          path,
           isCritical: task.isCritical && pred.isCritical,
           key: `${pred.id}-${task.id}`,
         });

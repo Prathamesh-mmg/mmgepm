@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { risksApi, projectsApi, api } from '../lib/api';
+import { risksApi, projectsApi, usersApi, api } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -55,6 +55,8 @@ const emptyForm: RiskForm = {
   contingencyPlan:'', contingencyBudget:'', riskOwnerId:'', reviewDate:'',
 };
 
+// Risk type is always Threat — Opportunity type is removed per user request (#22)
+
 export default function RisksPage() {
   const qc = useQueryClient();
   const { hasRole } = useAuthStore();
@@ -73,6 +75,12 @@ export default function RisksPage() {
     queryKey: ['projects-list'],
     queryFn: () => projectsApi.getAll({ pageSize:100 }).then(r => r.data.items),
   });
+
+  const { data: usersData } = useQuery({
+    queryKey: ['users-for-risk-owner'],
+    queryFn: () => usersApi.getAll({ pageSize: 200 }).then(r => r.data?.items ?? r.data ?? []),
+  });
+  const usersList: any[] = Array.isArray(usersData) ? usersData : [];
 
   const { data: risksData, isLoading } = useQuery({
     queryKey: ['risks', projectId, statusFilter],
@@ -114,15 +122,13 @@ export default function RisksPage() {
   const advanceMutation = useMutation({
     mutationFn: () => api.post(`/risks/${selectedRisk.id}/lifecycle/advance`,
       { status: newStatus || NEXT_STATUS[selectedRisk.status] || selectedRisk.status, notes: updateNote }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey:['risks'] });
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey:['risks'] });
       qc.invalidateQueries({ queryKey:['risk-lifecycle', selectedRisk?.id] });
       qc.invalidateQueries({ queryKey:['risk-updates', selectedRisk?.id] });
-      toast.success('Risk advanced'); setNote(''); setNewStatus('');
-      // Refresh selected risk
-      const updated = risksData?.items?.find((r:any) => r.id === selectedRisk.id);
-      if (updated) setSelected(updated);
+      toast.success('Risk updated successfully'); setNote(''); setNewStatus('');
     },
+    onError: (e:any) => toast.error(e.response?.data?.message || 'Failed to update risk'),
   });
 
   const voidMutation = useMutation({
@@ -461,7 +467,7 @@ export default function RisksPage() {
                     <div className="flex gap-2">
                       <button className="btn-primary text-sm flex-1"
                         onClick={() => advanceMutation.mutate()}
-                        disabled={advanceMutation.isPending || (!updateNote && !newStatus)}>
+                        disabled={advanceMutation.isPending}>
                         {advanceMutation.isPending ? 'Saving...' : `→ ${STAGE_LABELS[newStatus || NEXT_STATUS[selectedRisk.status]] || 'Save Update'}`}
                       </button>
                       <button className="btn-ghost text-sm text-red-500 border border-red-200 hover:bg-red-50"
@@ -560,7 +566,7 @@ export default function RisksPage() {
                   <label className="form-label">Risk Type</label>
                   <select className="form-select" value={form.riskType}
                     onChange={e => setForm(f => ({...f, riskType: e.target.value}))}>
-                    <option>Threat</option><option>Opportunity</option>
+                    <option>Threat</option>
                   </select>
                 </div>
                 <div className="form-group">
@@ -608,6 +614,16 @@ export default function RisksPage() {
                   <label className="form-label">Review Date</label>
                   <input type="date" className="form-input" value={form.reviewDate}
                     onChange={e => setForm(f => ({...f, reviewDate: e.target.value}))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Risk Owner</label>
+                  <select className="form-select" value={form.riskOwnerId}
+                    onChange={e => setForm(f => ({...f, riskOwnerId: e.target.value}))}>
+                    <option value="">— Assign owner —</option>
+                    {usersList.map((u:any) => (
+                      <option key={u.id} value={u.id}>{u.fullName || u.username}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="modal-footer">
