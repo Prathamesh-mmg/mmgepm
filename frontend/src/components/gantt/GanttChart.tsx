@@ -459,7 +459,7 @@ function TaskRow({ task, isCollapsed, isSelected, onToggle, onSelect }: {
       {/* Progress bar */}
       <div className="w-14 px-1">
         <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div className="h-full rounded-full' style={{background:'var(--primary)'}}//{/* progress */}<div className='hidden" style={{ width: `${task.progress}%` }} />
+          <div className="h-full rounded-full" style={{background:'var(--primary)', width: `${task.progress}%`}} />
         </div>
       </div>
       {/* Status dot */}
